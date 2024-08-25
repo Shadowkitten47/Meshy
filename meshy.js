@@ -8,16 +8,10 @@ Plugin.register('meshy', {
 	version: '1.0.0',
 	variant: 'both',
     onload() {
-        if (BarItems['add_mesh']) {
-            let addMesh = BarItems['add_mesh']
-            addMesh.condition = { modes: ['edit'], method: () => ([ "free", "bedrock", "bedrock" ].includes(Format.id)) }
-        }
-        else console.warn('Error')
-        if (BarItems['import_obj']) {
-            let importObj = BarItems['import_obj']
-            importObj.condition = { modes: ['edit'], method: () => ([ "free", "bedrock", "bedrock" ].includes(Format.id)) }
-        }
-        console.warn(Format.id)
+        const bedrock_old = Formats['bedrock_old']
+        const bedrock = Formats['bedrock']
+        bedrock.meshes = true;
+        bedrock_old.meshes = true;
     }
 });
 
