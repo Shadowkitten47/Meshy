@@ -344,14 +344,11 @@ function compileGroup(g) {
     for (var obj of g.children) {
         if (obj.export) {
             if (obj instanceof Cube) {
-
                 let template = compileCube(obj, bone);
                 cubes.push(template);
-
             } else if (obj instanceof Mesh ) {
-                console.log(obj)
                 obj = transforMesh(obj);
-                poly_mesh = meshToPolyMesh(obj);
+                poly_mesh = meshToPolyMesh(poly_mesh, obj);
             } else if (obj instanceof Locator || obj instanceof NullObject) {
                 let key = obj.name;
                 if (obj instanceof NullObject) key = '_null_' + key;

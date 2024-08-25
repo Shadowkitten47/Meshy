@@ -261,6 +261,7 @@ codec.compile = function compile(options) {
 		var cubes = []
 		var locators = {};
 		var poly_mesh = null;
+
 		for (var obj of g.children) {
 			if (obj.export) {
 				if (obj instanceof Cube) {
@@ -287,9 +288,8 @@ codec.compile = function compile(options) {
 					locators[obj.name] = obj.position.slice();
 					locators[obj.name][0] *= -1;
 				} else if (obj instanceof Mesh ) {
-					console.log(obj)
 					obj = transforMesh(obj);
-					poly_mesh = meshToPolyMesh(obj);
+					poly_mesh = meshToPolyMesh(poly_mesh, obj);
 				}
 			}
 		}

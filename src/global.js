@@ -50,24 +50,25 @@ function rotatePoint(point, center, rotation) {
     ];
 }
 
-function meshToPolyMesh(mesh, ) {
-    const poly_mesh = {
+function meshToPolyMesh(poly_mesh, mesh) {
+    const poly_mesh_template = {
 		normalized_uvs: true,
         positions: [],
 		normals: [],
         uvs: [],
         polys: []
     };
-
+    poly_mesh ??= poly_mesh_template;
 	const vKeysToIndex = {};
-    poly_mesh.positions =  poly_mesh.positions = Object.entries(mesh.vertices).map(([key, position], index) => {
-        vKeysToIndex[key] = index;
+    let positions =Object.entries(mesh.vertices).map(([key, position], index) => {
+        vKeysToIndex[key] = index + poly_mesh.positions.length;
         return position;
     });
 
-	poly_mesh.polys = Object.values(mesh.faces)
+    let polys = [];
+	polys = Object.values(mesh.faces)
 	
-	poly_mesh.polys = poly_mesh.polys.map( (/** @type {MeshFace} */ face ) => { 
+	polys = polys.map( (/** @type {MeshFace} */ face ) => { 
 		
 		return face.vertices.map( (vertexKey) => {
 			let nIndex = -1;
@@ -90,17 +91,20 @@ function meshToPolyMesh(mesh, ) {
 			return [ vKeysToIndex[vertexKey], nIndex, uIndex ];
 		});
 	})
-	poly_mesh.polys.forEach((face, i) => { //Split to triangles if needed
+	polys.forEach((face, i) => { //Split to triangles if needed
 		if (face.length > 4) { 
-            poly_mesh.polys.splice(i, 1)
+            polys.splice(i, 1)
             for (let j = 1; j < face.length - 1; j++) {
-                poly_mesh.polys.push([ face[0], face[j], face[j + 1] ])
+                polyss.push([ face[0], face[j], face[j + 1] ])
             }
         }
 	})
-    poly_mesh.polys.forEach((face, i) => { //Convert to quads remove if tri gets fixed
-        poly_mesh.polys[i] = [face[0], face[1], face[2], face[3] ?? face[2]]
+    polys.forEach((face, i) => { //Convert to quads remove if tri gets fixed
+        polys[i] = [face[0], face[1], face[2], face[3] ?? face[2]]
     })
+
+    poly_mesh.polys.push(...polys);
+    poly_mesh.positions.push(...positions);
     return poly_mesh;
 }
 
