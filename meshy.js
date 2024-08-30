@@ -33,11 +33,12 @@ if (!settings["triangulate_quads"])
 //#endregion
 
 function uvsOnSave(uvs) { 
-    if (!settings["normalized_uvs"].value) return uvs
+    if (!settings["normalized_uvs"].value) {
+        uvs[1] = 1 - uvs[1];
+        return uvs;
+    }
     uvs[0] /= Project.texture_width
     uvs[1] /= Project.texture_height
-    clamp(uvs[0], 0, 1)
-    clamp(uvs[1], 0, 1)
     return uvs
 }
 
@@ -153,7 +154,7 @@ function polymesh_to_mesh(b, group) {
                     base_mesh.vertices[`v${vertex[0]}`] = point;
                     vertices.push(`v${vertex[0]}`)
                     const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
-                    const uv2 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
+                    const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : b.poly_mesh.uvs[vertex[2]][1] );
                     uv[`v${vertex[0]}`] = [ uv1, uv2 ];
                 }
                 base_mesh.addFaces(new MeshFace(base_mesh, { vertices, uv }));
@@ -172,7 +173,7 @@ function polymesh_to_mesh(b, group) {
                 base_mesh.vertices[`v${vertex[0]}`] = b.poly_mesh.positions[vertex[0]];
                 vertices.push(`v${vertex[0]}`)
                 const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
-                const uv2 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
+                const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : b.poly_mesh.uvs[vertex[2]][1] );
                 uv[`v${vertex[0]}`] = [ uv1, uv2 ];
             }
             base_mesh.addFaces(new MeshFace(base_mesh, { vertices, uv }));
