@@ -23,13 +23,13 @@ if (!settings["normalized_uvs"])
         value: true,
         plugin: "meshy"
     })
-//if (!settings["triangulate_quads"])
-//        new Setting("triangulate_quads", {
-//        name: "Triangulate Quads",
-//        description: "Triangulate quads on export | Quads sometimes act funny this may fix it",
-//        value: true,
-//        plugin: "meshy"
-//    })
+if (!settings["triangulate_quads"])
+        new Setting("triangulate_quads", {
+        name: "Triangulate Quads",
+        description: "Triangulate quads on export | Quads sometimes act funny this may fix it",
+        value: true,
+        plugin: "meshy"
+    })
 //#endregion
 
 function uvsOnSave(uvs) { 
