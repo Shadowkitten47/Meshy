@@ -220,7 +220,7 @@ function parseBone(b, bones, parent_list) {
 
     //Change
     if (b.poly_mesh) {
-        parsePolyMesh(b, group)
+        polymesh_to_mesh(b, group)
     }
     //End Change
     var parent_group = 'root';
@@ -347,8 +347,7 @@ function compileGroup(g) {
                 let template = compileCube(obj, bone);
                 cubes.push(template);
             } else if (obj instanceof Mesh ) {
-                obj = transforMesh(obj);
-                poly_mesh = meshToPolyMesh(poly_mesh, obj);
+                poly_mesh = mesh_to_polymesh(poly_mesh, obj);
             } else if (obj instanceof Locator || obj instanceof NullObject) {
                 let key = obj.name;
                 if (obj instanceof NullObject) key = '_null_' + key;

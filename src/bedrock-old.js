@@ -81,7 +81,7 @@ function parseGeometry(data) {
 			}
 			//Changed Code
 			if (b.poly_mesh) {
-				parsePolyMesh(b, group)
+				polymesh_to_mesh(b, group)
 			}
 			//End if change
 			if (b.children) {
@@ -288,8 +288,7 @@ codec.compile = function compile(options) {
 					locators[obj.name] = obj.position.slice();
 					locators[obj.name][0] *= -1;
 				} else if (obj instanceof Mesh ) {
-					obj = transforMesh(obj);
-					poly_mesh = meshToPolyMesh(poly_mesh, obj);
+					poly_mesh = mesh_to_polymesh(poly_mesh, obj);
 				}
 			}
 		}
