@@ -8,6 +8,7 @@ Plugin.register('meshy', {
 	version: '1.0.0',
 	variant: 'both',
     onload() {
+        console.log("Meshy loaded")
         const bedrock_old = Formats['bedrock_old']
         const bedrock = Formats['bedrock']
         bedrock.meshes = true;
@@ -15,6 +16,34 @@ Plugin.register('meshy', {
     }
 });
 
+if (!settings["normalized_uvs"])
+    new Setting("normalized_uvs", {
+        name: "Normalize UVs",
+        description: "Normalize uvs on export",
+        value: true,
+        plugin: "meshy"
+    })
+if (!settings["triangulate_quads"])
+        new Setting("triangulate_quads", {
+        name: "Triangulate Quads",
+        description: "Triangulate quads on export | Quads sometimes act funny this may fix it",
+        value: true,
+        plugin: "meshy"
+    })
+
+
+function uvsOnSave(uvs) { 
+    if (!settings["normalized_uvs"].value) return uvs
+    uvs[0] /= Project.texture_width
+    uvs[1] /= Project.texture_height
+    clamp(uvs[0], 0, 1)
+    clamp(uvs[1], 0, 1)
+    return uvs
+}
+
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
 function toRadians(degrees) {
     return degrees * (Math.PI / 180);
 }
@@ -53,7 +82,7 @@ function rotatePoint(point, center, rotation) {
 
 function meshToPolyMesh(poly_mesh, mesh) {
     const poly_mesh_template = {
-		normalized_uvs: true,
+		normalized_uvs: settings["normalized_uvs"].value,
         positions: [],
 		normals: [],
         uvs: [],
@@ -61,7 +90,7 @@ function meshToPolyMesh(poly_mesh, mesh) {
     };
     poly_mesh ??= poly_mesh_template;
 	const vKeysToIndex = {};
-    let positions =Object.entries(mesh.vertices).map(([key, position], index) => {
+    let positions = Object.entries(mesh.vertices).map(([key, position], index) => {
         vKeysToIndex[key] = index + poly_mesh.positions.length;
         return position;
     });
@@ -75,7 +104,8 @@ function meshToPolyMesh(poly_mesh, mesh) {
 			let nIndex = -1;
 			let uIndex = -1;
             
-            const uv = [face.uv[vertexKey][0] / Project.texture_width, face.uv[vertexKey][1] / Project.texture_height]
+            const uv = uvsOnSave([face.uv[vertexKey][0], face.uv[vertexKey][1]])
+            
 			if (indexFindArr(poly_mesh.uvs, uv) === -1 ) {
 				poly_mesh.uvs.push(uv);
 				uIndex = poly_mesh.uvs.length - 1;
@@ -92,18 +122,20 @@ function meshToPolyMesh(poly_mesh, mesh) {
 			return [ vKeysToIndex[vertexKey], nIndex, uIndex ];
 		});
 	})
-	polys.forEach((face, i) => { //Split to triangles if needed
-		if (face.length > 4) { 
-            polys.splice(i, 1)
-            for (let j = 1; j < face.length - 1; j++) {
-                polyss.push([ face[0], face[j], face[j + 1] ])
+    const tri_size = settings["triangulate_quads"].value ? 3 : 4;
+
+    const temp_polys = [...polys]
+    polys = [];
+	for (let i in temp_polys) {
+        if (!Array.isArray(temp_polys[i])) continue;
+        if (temp_polys[i].length > tri_size) {
+            for (let j = 1; j < temp_polys[i].length - 1; j++) {
+                polys.push([ temp_polys[i][0], temp_polys[i][j], temp_polys[i][j + 1] ])
             }
         }
-	})
-    polys.forEach((face, i) => { //Convert to quads remove if tri gets fixed
-        polys[i] = [face[0], face[1], face[2], face[3] ?? face[2]]
-    })
-
+        else polys.push(temp_polys[i])
+    }
+    polys = polys.map((poly) => [ poly[0], poly[1], poly[2], poly[3] ?? poly[2] ]);
     poly_mesh.polys.push(...polys);
     poly_mesh.positions.push(...positions);
     return poly_mesh;
