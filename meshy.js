@@ -23,22 +23,22 @@ if (!settings["normalized_uvs"])
         value: true,
         plugin: "meshy"
     })
-if (!settings["triangulate_quads"])
-        new Setting("triangulate_quads", {
-        name: "Triangulate Quads",
-        description: "Triangulate quads on export | Quads sometimes act funny this may fix it",
-        value: true,
-        plugin: "meshy"
-    })
+//if (!settings["triangulate_quads"])
+//        new Setting("triangulate_quads", {
+//        name: "Triangulate Quads",
+//        description: "Triangulate quads on export | Quads sometimes act funny this may fix it",
+//        value: true,
+//        plugin: "meshy"
+//    })
 //#endregion
 
 function uvsOnSave(uvs) { 
-    if (!settings["normalized_uvs"].value) {
-        uvs[1] = 1 - uvs[1];
-        return uvs;
-    }
+    uvs[1] = Project.texture_height - uvs[1]
+    if (!settings["normalized_uvs"].value) return uvs
     uvs[0] /= Project.texture_width
     uvs[1] /= Project.texture_height
+    clamp(uvs[0], 0, 1)
+    clamp(uvs[1], 0, 1)
     return uvs
 }
 
@@ -53,7 +53,6 @@ function mesh_to_polymesh(poly_mesh, mesh) {
         uvs: [],
         polys: []
     };
-
     poly_mesh ??= poly_mesh_template;
 
     //Meta Data for mesh to be exported
@@ -69,16 +68,18 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 
 
 	const vKeysToIndex = {};
+    const vKeyToNormalIndex = {};
 
     //Apply rotaion and translation and return without changing original object
     let positions = getVertices(mesh).map(([key, position], index) => {
         vKeysToIndex[key] = index + poly_mesh.positions.length;
         return position;
     });
+    let normals = []
 
     let polys = [];
 	polys = Object.values(mesh.faces)
-	
+
 	polys = polys.map( (/** @type {MeshFace} */ face ) => { 
 		return face.vertices.map( (vertexKey) => {
 			let nIndex = -1;
@@ -92,12 +93,11 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 			}
 			else uIndex = indexFindArr(poly_mesh.uvs, uv) 
 
-			const normal = face.getNormal(true)
-			if (indexFindArr(poly_mesh.normals, normal) === -1) {
-				poly_mesh.normals.push(normal)
-                nIndex = poly_mesh.uvs.length - 1;
-			}
-			else nIndex = indexFindArr(poly_mesh.normals, normal)
+            if (!vKeyToNormalIndex[vertexKey]) {
+                poly_mesh.normals.push(getVertexNormal(mesh, vertexKey));
+                vKeyToNormalIndex[vertexKey] = poly_mesh.normals.length - 1
+            }
+			nIndex = vKeyToNormalIndex[vertexKey];
 
 			return [ vKeysToIndex[vertexKey], nIndex, uIndex ];
 		});
@@ -146,6 +146,13 @@ function polymesh_to_mesh(b, group) {
             const org = multiplyScalar(mesh.origin, -1);
             const rot = multiplyScalar(mesh.rotation, -1);
             for ( let face of polys ) {
+                const unique = [];
+                for (let i = 0; i < face.length; i++) {
+                    if (indexFindArr(unique, face[i]) === -1) {
+                        unique.push(face[i]);
+                    }
+                }
+                face = unique;
                 const vertices = []
                 const uv = {}
                 for (let vertex of face ) {
@@ -154,7 +161,7 @@ function polymesh_to_mesh(b, group) {
                     base_mesh.vertices[`v${vertex[0]}`] = point;
                     vertices.push(`v${vertex[0]}`)
                     const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
-                    const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : b.poly_mesh.uvs[vertex[2]][1] );
+                    const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : Project.texture_height - b.poly_mesh.uvs[vertex[2]][1] );
                     uv[`v${vertex[0]}`] = [ uv1, uv2 ];
                 }
                 base_mesh.addFaces(new MeshFace(base_mesh, { vertices, uv }));
@@ -167,6 +174,13 @@ function polymesh_to_mesh(b, group) {
     else {
         const base_mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
         for ( let face of b.poly_mesh.polys ) {
+            const unique = [];
+            for (let i = 0; i < face.length; i++) {
+                if (indexFindArr(unique, face[i]) === -1) {
+                    unique.push(face[i]);
+                }
+            }
+            face = unique;
             const vertices = []
             const uv = {}
             for (let vertex of face ) {
@@ -183,6 +197,32 @@ function polymesh_to_mesh(b, group) {
 }
 
 //#region Helpers
+
+function getVertexNormal(mesh, vertexKey) {
+    let normalSum = [0, 0, 0];
+    let faceCount = 0;
+
+    for (let faceKey in mesh.faces) {
+        let face = mesh.faces[faceKey];
+        if (face.vertices.includes(vertexKey)) {
+            let faceNormal = face.getNormal();
+            normalSum[0] += faceNormal[0];
+            normalSum[1] += faceNormal[1];
+            normalSum[2] += faceNormal[2];
+            faceCount++;
+        }
+    }
+
+    let normalLength = Math.sqrt(normalSum[0] * normalSum[0] + normalSum[1] * normalSum[1] + normalSum[2] * normalSum[2]);
+    if (normalLength === 0) {
+        return [0, 1, 0]; // Default to up vector if normal is zero
+    }
+    return [
+        normalSum[0] / normalLength,
+        normalSum[1] / normalLength,
+        normalSum[2] / normalLength
+    ];
+}
 
 function multiplyScalar(vec, scalar) {
     return vec.map((coord) => coord * scalar);
