@@ -1,0 +1,2 @@
+This is a plugin for block bench that allows you to open poly meshes and save them. I made it becuase meshes are already supported by blockbench all I needed to do was convert to the correct format so I wondered why it haden't already been implimented although it took me a bit to figure out how the actual to do it. For bb devs it should have been a cake walk tbh. 
+They didn't want to add it becuase it dosen't mesh with minecrafts style witch is fair but limit people creativity just becuase it dosen't match your style doesn't mean you should deny the creators freedom
