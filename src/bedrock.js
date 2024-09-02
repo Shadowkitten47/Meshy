@@ -307,6 +307,64 @@ function getFormatVersion() {
 	return '1.12.0';
 }
 
+function compileCube(cube, bone) {
+    var template = {
+        origin: cube.from.slice(),
+        size: cube.size(),
+        inflate: cube.inflate||undefined,
+    }
+    if (cube.box_uv) {
+        template = new oneLiner(template);
+    }
+    template.origin[0] = -(template.origin[0] + template.size[0])
+
+    if (!cube.rotation.allEqual(0)) {
+        template.pivot = cube.origin.slice();
+        template.pivot[0] *= -1;
+        
+        template.rotation = cube.rotation.slice();
+        template.rotation.forEach(function(br, axis) {
+            if (axis != 2) template.rotation[axis] *= -1
+        })
+    }
+
+    if (cube.box_uv) {
+        template.uv = cube.uv_offset;
+        if (cube.mirror_uv === !bone.mirror) {
+            template.mirror = cube.mirror_uv
+        }
+    } else {
+        template.uv = {};
+        for (var key in cube.faces) {
+            var face = cube.faces[key];
+            if (face.texture !== null) {
+                template.uv[key] = new oneLiner({
+                    uv: [
+                        face.uv[0],
+                        face.uv[1],
+                    ],
+                    uv_size: [
+                        face.uv_size[0],
+                        face.uv_size[1],
+                    ]
+                });
+                if (face.rotation) {
+                    template.uv[key].uv_rotation = face.rotation;
+                }
+                if (face.material_name) {
+                    template.uv[key].material_instance = face.material_name;
+                }
+                if (key == 'up' || key == 'down') {
+                    template.uv[key].uv[0] += template.uv[key].uv_size[0];
+                    template.uv[key].uv[1] += template.uv[key].uv_size[1];
+                    template.uv[key].uv_size[0] *= -1;
+                    template.uv[key].uv_size[1] *= -1;
+                }
+            }
+        }
+    }
+    return template;
+}
 function compileGroup(g) {
     if (g.type !== 'group' || g.export == false) return;
     if (!settings.export_empty_groups.value && !g.children.find(child => child.export)) return;

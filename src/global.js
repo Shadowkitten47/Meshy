@@ -14,6 +14,8 @@ Plugin.register('meshy', {
     }
 });
 
+console.warn(Plugins.path);
+
 //#region Settings
 if (!settings["normalized_uvs"])
     new Setting("normalized_uvs", {
@@ -104,7 +106,6 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 
     
     const tri_size = settings["triangulate_quads"].value ? 3 : 4;
-
     const temp_polys = [...polys]
     polys = [];
 	for (let i in temp_polys) {
