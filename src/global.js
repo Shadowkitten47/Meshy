@@ -11,11 +11,19 @@ Plugin.register('meshy', {
         const bedrock = Formats['bedrock']
         bedrock.meshes = true;
         bedrock_old.meshes = true;
+    },
+    onunload() {
+        const bedrock_old = Formats['bedrock_old']
+        const bedrock = Formats['bedrock']
+        bedrock.meshes = false;
+        bedrock_old.meshes = false;
     }
 });
 
-console.warn(Plugins.path);
 
+    new Worker(function () {
+    console.log("Hello")
+  });
 //#region Settings
 if (!settings["normalized_uvs"])
     new Setting("normalized_uvs", {
@@ -82,21 +90,27 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 	polys = Object.values(mesh.faces)
 
 	polys = polys.map( (/** @type {MeshFace} */ face ) => { 
-		return face.vertices.map( (vertexKey) => {
+		return face.getSortedVertices().map( (vertexKey) => {
 			let nIndex = -1;
 			let uIndex = -1;
             
             const uv = uvsOnSave([face.uv[vertexKey][0], face.uv[vertexKey][1]])
-            
 			if (indexFindArr(poly_mesh.uvs, uv) === -1 ) {
 				poly_mesh.uvs.push(uv);
 				uIndex = poly_mesh.uvs.length - 1;
 			}
 			else uIndex = indexFindArr(poly_mesh.uvs, uv) 
 
-            if (!vKeyToNormalIndex[vertexKey]) {
-                poly_mesh.normals.push(getVertexNormal(mesh, vertexKey));
-                vKeyToNormalIndex[vertexKey] = poly_mesh.normals.length - 1
+            if (!vKeyToNormalIndex[vertexKey]) { //Check if normal has been added to the vertex
+                const normal = getVertexNormal(mesh, vertexKey);
+                const index = indexFindArr(poly_mesh.normals, normal);
+                if (index === -1 ) { //Check if normal is already in the array
+                    poly_mesh.normals.push(normal);
+                    vKeyToNormalIndex[vertexKey] = poly_mesh.normals.length - 1
+                }
+                else {
+                    vKeyToNormalIndex[vertexKey] = index;
+                }
             }
 			nIndex = vKeyToNormalIndex[vertexKey];
 
@@ -105,7 +119,7 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 	})
 
     
-    const tri_size = settings["triangulate_quads"].value ? 3 : 4;
+    const tri_size = 3;
     const temp_polys = [...polys]
     polys = [];
 	for (let i in temp_polys) {
