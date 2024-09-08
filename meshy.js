@@ -102,9 +102,16 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 			}
 			else uIndex = indexFindArr(poly_mesh.uvs, uv) 
 
-            if (!vKeyToNormalIndex[vertexKey]) {
-                poly_mesh.normals.push(getVertexNormal(mesh, vertexKey));
-                vKeyToNormalIndex[vertexKey] = poly_mesh.normals.length - 1
+            if (!vKeyToNormalIndex[vertexKey]) { //Check if normal has been added to the vertex
+                const normal = getVertexNormal(mesh, vertexKey);
+                const index = indexFindArr(poly_mesh.normals, normal);
+                if (index === -1 ) { //Check if normal is already in the array
+                    poly_mesh.normals.push(normal);
+                    vKeyToNormalIndex[vertexKey] = poly_mesh.normals.length - 1
+                }
+                else {
+                    vKeyToNormalIndex[vertexKey] = index;
+                }
             }
 			nIndex = vKeyToNormalIndex[vertexKey];
 
@@ -249,8 +256,11 @@ function clamp(value, min, max) {
 function toRadians(degrees) {
     return degrees * (Math.PI / 180);
 }
+
+//Minecraft polys_lack and overall pos and rotation
+//So we need to apply them to each vertex on export
 function translatePoint(point, center) {
-    return point.map((coord, i) => coord + center[i]);
+    return [ point[0] - center[0], point[1] + center[1], point[2] + center[2] ];
 }
 function rotatePoint(point, center, rotation) {
     // Convert rotation angles to radians

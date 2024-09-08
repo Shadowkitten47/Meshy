@@ -255,8 +255,11 @@ function clamp(value, min, max) {
 function toRadians(degrees) {
     return degrees * (Math.PI / 180);
 }
+
+//Minecraft polys_lack and overall pos and rotation
+//So we need to apply them to each vertex on export
 function translatePoint(point, center) {
-    return point.map((coord, i) => coord + center[i]);
+    return [ point[0] - center[0], point[1] + center[1], point[2] + center[2] ];
 }
 function rotatePoint(point, center, rotation) {
     // Convert rotation angles to radians
