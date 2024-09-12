@@ -21,10 +21,6 @@ Plugin.register('meshy', {
     }
 });
 
-
-    new Worker(function () {
-    console.log("Hello")
-  });
 //#region Settings
 if (!settings["normalized_uvs"])
     new Setting("normalized_uvs", {
@@ -33,25 +29,10 @@ if (!settings["normalized_uvs"])
         value: true,
         plugin: "meshy"
     })
-if (!settings["triangulate_quads"])
-        new Setting("triangulate_quads", {
-        name: "Triangulate Quads",
-        description: "Triangulate quads on export | Quads sometimes act funny this may fix it",
-        value: true,
-        plugin: "meshy"
-    })
 //#endregion
 
-function uvsOnSave(uvs) { 
-    uvs[1] = Project.texture_height - uvs[1]
-    if (!settings["normalized_uvs"].value) return uvs
-    uvs[0] /= Project.texture_width
-    uvs[1] /= Project.texture_height
-    clamp(uvs[0], 0, 1)
-    clamp(uvs[1], 0, 1)
-    return uvs
-}
-
+//Code that happens on import
+//#region Save Functions
 function mesh_to_polymesh(poly_mesh, mesh) {
     const poly_mesh_template = {
         meta: {
@@ -120,7 +101,7 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 	})
 
     
-    const tri_size = 3;
+    const tri_size = 4;
     const temp_polys = [...polys]
     polys = [];
 	for (let i in temp_polys) {
@@ -141,7 +122,16 @@ function mesh_to_polymesh(poly_mesh, mesh) {
     poly_mesh.positions.push(...positions);
     return poly_mesh;
 }
-
+function uvsOnSave(uvs) { 
+    uvs[1] = Project.texture_height - uvs[1]
+    if (!settings["normalized_uvs"].value) return uvs
+    uvs[0] /= Project.texture_width
+    uvs[1] /= Project.texture_height
+    clamp(uvs[0], 0, 1)
+    clamp(uvs[1], 0, 1)
+    return uvs
+}
+//endregion
 
 //Gets vertices and applys nessary transformations
 function getVertices(mesh) {
@@ -157,6 +147,7 @@ function polymesh_to_mesh(b, group) {
     if (b.poly_mesh.meta) {
         for (let mesh of b.poly_mesh.meta.meshes) {
             const base_mesh = new Mesh({name: mesh.name, autouv: 0, color: group.color, vertices: []});
+            //base_mesh.normals = {}
             const polys = b.poly_mesh.polys.slice(mesh.start, mesh.start + mesh.length);
             const org = multiplyScalar(mesh.origin, -1);
             const rot = multiplyScalar(mesh.rotation, -1);
@@ -173,16 +164,18 @@ function polymesh_to_mesh(b, group) {
                 for (let vertex of face ) {
                     //Moves points back to original position refer to getVertices
                     const point = rotatePoint( translatePoint(b.poly_mesh.positions[vertex[0]], org), mesh.origin, rot)
+                    //base_mesh.normals[`v${vertex[0]}`] = b.poly_mesh.normals[vertex[1]];
                     base_mesh.vertices[`v${vertex[0]}`] = point;
                     vertices.push(`v${vertex[0]}`)
                     const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
                     const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : Project.texture_height - b.poly_mesh.uvs[vertex[2]][1] );
+
                     uv[`v${vertex[0]}`] = [ uv1, uv2 ];
                 }
                 base_mesh.addFaces(new MeshFace(base_mesh, { vertices, uv }));
             }
             base_mesh.origin = mesh.origin;
-            base_mesh.rotation = mesh.rotation;
+            base_mesh.rotation = mesh.rotation;            
             base_mesh.addTo(group).init();
         }
     }
