@@ -309,7 +309,6 @@ function parseCube(s, group) {
 
 
 //ON SAvE
-
 codec.compile = function compile(options) {
     if (options === undefined) options = {}
 
@@ -434,6 +433,7 @@ function compileCube(cube, bone) {
     return template;
 }
 function compileGroup(g) {
+
     if (g.type !== 'group' || g.export == false) return;
     if (!settings.export_empty_groups.value && !g.children.find(child => child.export)) return;
     //Bone
@@ -466,7 +466,8 @@ function compileGroup(g) {
     var locators = {};
     var texture_meshes = [];
     var poly_mesh = null;
-
+    let c = 0;
+    const start = performance.now();
     for (var obj of g.children) {
         if (obj.export) {
             if (obj instanceof Cube) {
@@ -523,8 +524,9 @@ function compileGroup(g) {
                 texture_meshes.push(texmesh);
             } 
         }
+        
     }
-
+    const end = performance.now();
     if (cubes.length) {
         bone.cubes = cubes
     }
@@ -536,6 +538,9 @@ function compileGroup(g) {
     }
     if (poly_mesh !== null) {
         bone.poly_mesh = poly_mesh
+        console.log(`Compiled in ${end - start}ms`);
+        console.log(poly_mesh.positions.length || 0)
+        console.log((end - start) / poly_mesh.positions.length || 0 )
     }
     return bone;
 }

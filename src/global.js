@@ -1,4 +1,6 @@
-Plugin.register('meshy', {
+if (!global.pluginId) global.pluginId = "meshy";
+
+Plugin.register(pluginId, {
 	title: 'Meshy',
 	author: 'Shadowkitten47',
 	icon: 'diamond',
@@ -26,103 +28,109 @@ if (!settings["normalized_uvs"])
         name: "Normalize UVs",
         description: "Normalize uvs on export",
         value: true,
-        plugin: "meshy"
+        plugin: pluginId
     })
+if (!settings["meta_data"])
+    new Setting("meta_data", {
+        name: "Meta Data",
+        description: "Add meta data to mesh. This is used to recover the original mesh in block bench if false all mesh objects are merged into one. Will make file size smaller",
+        value: true,
+        plugin: pluginId
+    })
+if (!settings["skip_normals"]) {
+    new Setting("skip_normals", {
+        name: "Skip Normals",
+        description: "Model will lack all shading information",
+        value: false,
+        plugin: pluginId
+    })
+}
 //#endregion
 
 //Code that happens on import
 //#region Save Functions
 function mesh_to_polymesh(poly_mesh, mesh) {
-    const poly_mesh_template = {
-        meta: {
-            meshes: []
-        },
+    poly_mesh ??= 
+    {
+        meta: settings["meta_data"].value ? 
+        {
+            meshes: [],
+        } : undefined,
 		normalized_uvs: settings["normalized_uvs"].value,
         positions: [],
 		normals: [],
         uvs: [],
         polys: []
     };
-    poly_mesh ??= poly_mesh_template;
 
-    //Meta Data for mesh to be exported
-    //Minecraft doesn't support multiple meshes under the same group
-    //So we combine all meshes into one mesh the meta data is to recover the original meshes
-    const mesh_meta = {
-        name: mesh.name,
-        //No postion only origin
-        origin: mesh.origin,
-        rotation: mesh.rotation,
-        start: poly_mesh.polys.length,
-    }
-
-
-	const vKeysToIndex = {};
-    const vKeyToNormalIndex = {};
+	const vKeyTopIndex = new Map();
+    const vKeyTonIndex = new Map();
+    const normalHash = {};
 
     //Apply rotaion and translation and return without changing original object
-    let positions = getVertices(mesh).map(([key, position], index) => {
-        vKeysToIndex[key] = index + poly_mesh.positions.length;
-        return position;
-    });
-    let normals = []
+    const vertexFacesMap = new Map();
 
-    let polys = [];
-	polys = Object.values(mesh.faces)
+    // Iterate through faces once 
+    for (let faceKey in mesh.faces) {
+        let face = mesh.faces[faceKey];
+        for (let vertexKey of face.vertices) {
+            if (!vertexFacesMap.has(vertexKey)) {
+                vertexFacesMap.set(vertexKey, []);
+            }
+            vertexFacesMap.get(vertexKey).push(faceKey);
+        }
+    }
+    for (let [key, pos] of getVertices(mesh)) {
+        vKeyTopIndex.set(key, poly_mesh.positions.length);
+        poly_mesh.positions.push(pos);
 
-	polys = polys.map( (/** @type {MeshFace} */ face ) => { 
-		return face.getSortedVertices().map( (vertexKey) => {
-			let nIndex = -1;
+        const normal = getVertexNormal(mesh, key, vertexFacesMap);
+
+        if (!normalHash[normal]) {
+            vKeyTonIndex.set(key, poly_mesh.normals.length);
+            normalHash[normal] = poly_mesh.normals.length;
+            poly_mesh.normals.push(normal);
+        }
+        else vKeyTonIndex.set(key, normalHash[normal], vertexFacesMap)
+    }
+
+	let polys = Object.values(mesh.faces).map( (/** @type {MeshFace} */ face ) => { 
+        const poly = face.getSortedVertices().map( (vertexKey) => {
 			let uIndex = -1;
             
             const uv = uvsOnSave([face.uv[vertexKey][0], face.uv[vertexKey][1]])
-			if (indexFindArr(poly_mesh.uvs, uv) === -1 ) {
-				poly_mesh.uvs.push(uv);
-				uIndex = poly_mesh.uvs.length - 1;
+            const index = poly_mesh.uvs.indexOfArray(uv);
+			if (poly_mesh.uvs.indexOfArray(uv) === -1 ) {
+				uIndex = poly_mesh.uvs.length;
+                poly_mesh.uvs.push(uv);
 			}
-			else uIndex = indexFindArr(poly_mesh.uvs, uv) 
+			else uIndex = index;
 
-            if (!vKeyToNormalIndex[vertexKey]) { //Check if normal has been added to the vertex
-                const normal = getVertexNormal(mesh, vertexKey);
-                const index = indexFindArr(poly_mesh.normals, normal);
-                if (index === -1 ) { //Check if normal is already in the array
-                    poly_mesh.normals.push(normal);
-                    vKeyToNormalIndex[vertexKey] = poly_mesh.normals.length - 1
-                }
-                else {
-                    vKeyToNormalIndex[vertexKey] = index;
-                }
-            }
-			nIndex = vKeyToNormalIndex[vertexKey];
-
-			return [ vKeysToIndex[vertexKey], nIndex, uIndex ];
-		});
+			return [ vKeyTopIndex.get(vertexKey), vKeyTonIndex.get(vertexKey), uIndex ];
+		})
+        if (poly.length < 4) poly.push(poly[2]);
+		return poly
 	})
-
     
-    const tri_size = 4;
-    const temp_polys = [...polys]
-    polys = [];
-	for (let i in temp_polys) {
-        if (!Array.isArray(temp_polys[i])) continue;
-        if (temp_polys[i].length > tri_size) {
-            for (let j = 1; j < temp_polys[i].length - 1; j++) {
-                polys.push([ temp_polys[i][0], temp_polys[i][j], temp_polys[i][j + 1] ])
-            }
+    if (settings["meta_data"].value) {
+        //Meta Data for mesh to be exported
+        //Minecraft doesn't support multiple meshes under the same group
+        //So we combine all meshes into one mesh the meta data is to recover the original meshes
+        const mesh_meta = {
+            name: mesh.name,
+            //No postion only origin
+            origin: mesh.origin,
+            rotation: mesh.rotation,
+            start: poly_mesh.polys.length,
+            length: polys.length
         }
-        else polys.push(temp_polys[i])
+        poly_mesh.meta.meshes.push(mesh_meta);
     }
-
-    mesh_meta.length = polys.length;
-
-    poly_mesh.meta.meshes.push(mesh_meta);
-    polys = polys.map((poly) => [ poly[0], poly[1], poly[2], poly[3] ?? poly[2] ]);
     poly_mesh.polys.push(...polys);
-    poly_mesh.positions.push(...positions);
     return poly_mesh;
 }
 function uvsOnSave(uvs) { 
-    uvs[1] = Project.texture_height - uvs[1]
+    uvs[1] = Project.texture_height - uvs[1] //Invert y axis
     if (!settings["normalized_uvs"].value) return uvs
     uvs[0] /= Project.texture_width
     uvs[1] /= Project.texture_height
@@ -130,9 +138,10 @@ function uvsOnSave(uvs) {
     clamp(uvs[1], 0, 1)
     return uvs
 }
-//endregion
+//#endregion
 
 //Gets vertices and applys nessary transformations
+//#region Load Functions
 function getVertices(mesh) {
 	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
 		point = rotatePoint(point, mesh.origin, mesh.rotation)
@@ -153,7 +162,7 @@ function polymesh_to_mesh(b, group) {
             for ( let face of polys ) {
                 const unique = [];
                 for (let i = 0; i < face.length; i++) {
-                    if (indexFindArr(unique, face[i]) === -1) {
+                    if (unique.indexOfArray(face[i]) === -1) {
                         unique.push(face[i]);
                     }
                 }
@@ -193,6 +202,7 @@ function polymesh_to_mesh(b, group) {
             for (let vertex of face ) {
                 base_mesh.vertices[`v${vertex[0]}`] = b.poly_mesh.positions[vertex[0]];
                 vertices.push(`v${vertex[0]}`)
+                base_mesh.vNormals[`v${vertex[0]}`] = b.poly_mesh.normals[vertex[1]];
                 const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
                 const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : b.poly_mesh.uvs[vertex[2]][1] );
                 uv[`v${vertex[0]}`] = [ uv1, uv2 ];
@@ -202,22 +212,23 @@ function polymesh_to_mesh(b, group) {
         base_mesh.addTo(group).init();
     }
 }
-
+//#endregion
 //#region Helpers
 
-function getVertexNormal(mesh, vertexKey) {
+function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
+
+    if (settings["skip_normals"].value) return [ 0,1,0 ];
     let normalSum = [0, 0, 0];
     let faceCount = 0;
 
-    for (let faceKey in mesh.faces) {
-        let face = mesh.faces[faceKey];
-        if (face.vertices.includes(vertexKey)) {
-            let faceNormal = face.getNormal();
-            normalSum[0] += faceNormal[0];
-            normalSum[1] += faceNormal[1];
-            normalSum[2] += faceNormal[2];
-            faceCount++;
-        }
+    const faces = vertexFacesMap.get(vertexKey) || []
+    for (let face of faces) {
+        face = mesh.faces[face];
+        let faceNormal = face.getNormal();
+        normalSum[0] += faceNormal[0];
+        normalSum[1] += faceNormal[1];
+        normalSum[2] += faceNormal[2];
+        faceCount++;
     }
 
     let normalLength = Math.sqrt(normalSum[0] * normalSum[0] + normalSum[1] * normalSum[1] + normalSum[2] * normalSum[2]);
@@ -234,11 +245,11 @@ function getVertexNormal(mesh, vertexKey) {
 function multiplyScalar(vec, scalar) {
     return vec.map((coord) => coord * scalar);
 }
-function indexFindArr(arr1, arr2) {
-    return arr1.findIndex(arr => 
+Array.prototype.indexOfArray = function (x) {
+    return this.findIndex(arr => 
         Array.isArray(arr) && 
         arr.length === arr.length && 
-        arr.every((element, index) => element === arr2[index])
+        arr.every((element, index) => element === x[index])
     );
 }
 

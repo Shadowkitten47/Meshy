@@ -1,5 +1,7 @@
 //This is a bundle of JS files
-Plugin.register('meshy', {
+if (!global.pluginId) global.pluginId = "meshy";
+
+Plugin.register(pluginId, {
 	title: 'Meshy',
 	author: 'Shadowkitten47',
 	icon: 'diamond',
@@ -27,103 +29,109 @@ if (!settings["normalized_uvs"])
         name: "Normalize UVs",
         description: "Normalize uvs on export",
         value: true,
-        plugin: "meshy"
+        plugin: pluginId
     })
+if (!settings["meta_data"])
+    new Setting("meta_data", {
+        name: "Meta Data",
+        description: "Add meta data to mesh. This is used to recover the original mesh in block bench if false all mesh objects are merged into one. Will make file size smaller",
+        value: true,
+        plugin: pluginId
+    })
+if (!settings["skip_normals"]) {
+    new Setting("skip_normals", {
+        name: "Skip Normals",
+        description: "Model will lack all shading information",
+        value: false,
+        plugin: pluginId
+    })
+}
 //#endregion
 
 //Code that happens on import
 //#region Save Functions
 function mesh_to_polymesh(poly_mesh, mesh) {
-    const poly_mesh_template = {
-        meta: {
-            meshes: []
-        },
+    poly_mesh ??= 
+    {
+        meta: settings["meta_data"].value ? 
+        {
+            meshes: [],
+        } : undefined,
 		normalized_uvs: settings["normalized_uvs"].value,
         positions: [],
 		normals: [],
         uvs: [],
         polys: []
     };
-    poly_mesh ??= poly_mesh_template;
 
-    //Meta Data for mesh to be exported
-    //Minecraft doesn't support multiple meshes under the same group
-    //So we combine all meshes into one mesh the meta data is to recover the original meshes
-    const mesh_meta = {
-        name: mesh.name,
-        //No postion only origin
-        origin: mesh.origin,
-        rotation: mesh.rotation,
-        start: poly_mesh.polys.length,
-    }
-
-
-	const vKeysToIndex = {};
-    const vKeyToNormalIndex = {};
+	const vKeyTopIndex = new Map();
+    const vKeyTonIndex = new Map();
+    const normalHash = {};
 
     //Apply rotaion and translation and return without changing original object
-    let positions = getVertices(mesh).map(([key, position], index) => {
-        vKeysToIndex[key] = index + poly_mesh.positions.length;
-        return position;
-    });
-    let normals = []
+    const vertexFacesMap = new Map();
 
-    let polys = [];
-	polys = Object.values(mesh.faces)
+    // Iterate through faces once 
+    for (let faceKey in mesh.faces) {
+        let face = mesh.faces[faceKey];
+        for (let vertexKey of face.vertices) {
+            if (!vertexFacesMap.has(vertexKey)) {
+                vertexFacesMap.set(vertexKey, []);
+            }
+            vertexFacesMap.get(vertexKey).push(faceKey);
+        }
+    }
+    for (let [key, pos] of getVertices(mesh)) {
+        vKeyTopIndex.set(key, poly_mesh.positions.length);
+        poly_mesh.positions.push(pos);
 
-	polys = polys.map( (/** @type {MeshFace} */ face ) => { 
-		return face.getSortedVertices().map( (vertexKey) => {
-			let nIndex = -1;
+        const normal = getVertexNormal(mesh, key, vertexFacesMap);
+
+        if (!normalHash[normal]) {
+            vKeyTonIndex.set(key, poly_mesh.normals.length);
+            normalHash[normal] = poly_mesh.normals.length;
+            poly_mesh.normals.push(normal);
+        }
+        else vKeyTonIndex.set(key, normalHash[normal], vertexFacesMap)
+    }
+
+	let polys = Object.values(mesh.faces).map( (/** @type {MeshFace} */ face ) => { 
+        const poly = face.getSortedVertices().map( (vertexKey) => {
 			let uIndex = -1;
             
             const uv = uvsOnSave([face.uv[vertexKey][0], face.uv[vertexKey][1]])
-			if (indexFindArr(poly_mesh.uvs, uv) === -1 ) {
-				poly_mesh.uvs.push(uv);
-				uIndex = poly_mesh.uvs.length - 1;
+            const index = poly_mesh.uvs.indexOfArray(uv);
+			if (poly_mesh.uvs.indexOfArray(uv) === -1 ) {
+				uIndex = poly_mesh.uvs.length;
+                poly_mesh.uvs.push(uv);
 			}
-			else uIndex = indexFindArr(poly_mesh.uvs, uv) 
+			else uIndex = index;
 
-            if (!vKeyToNormalIndex[vertexKey]) { //Check if normal has been added to the vertex
-                const normal = getVertexNormal(mesh, vertexKey);
-                const index = indexFindArr(poly_mesh.normals, normal);
-                if (index === -1 ) { //Check if normal is already in the array
-                    poly_mesh.normals.push(normal);
-                    vKeyToNormalIndex[vertexKey] = poly_mesh.normals.length - 1
-                }
-                else {
-                    vKeyToNormalIndex[vertexKey] = index;
-                }
-            }
-			nIndex = vKeyToNormalIndex[vertexKey];
-
-			return [ vKeysToIndex[vertexKey], nIndex, uIndex ];
-		});
+			return [ vKeyTopIndex.get(vertexKey), vKeyTonIndex.get(vertexKey), uIndex ];
+		})
+        if (poly.length < 4) poly.push(poly[2]);
+		return poly
 	})
-
     
-    const tri_size = 4;
-    const temp_polys = [...polys]
-    polys = [];
-	for (let i in temp_polys) {
-        if (!Array.isArray(temp_polys[i])) continue;
-        if (temp_polys[i].length > tri_size) {
-            for (let j = 1; j < temp_polys[i].length - 1; j++) {
-                polys.push([ temp_polys[i][0], temp_polys[i][j], temp_polys[i][j + 1] ])
-            }
+    if (settings["meta_data"].value) {
+        //Meta Data for mesh to be exported
+        //Minecraft doesn't support multiple meshes under the same group
+        //So we combine all meshes into one mesh the meta data is to recover the original meshes
+        const mesh_meta = {
+            name: mesh.name,
+            //No postion only origin
+            origin: mesh.origin,
+            rotation: mesh.rotation,
+            start: poly_mesh.polys.length,
+            length: polys.length
         }
-        else polys.push(temp_polys[i])
+        poly_mesh.meta.meshes.push(mesh_meta);
     }
-
-    mesh_meta.length = polys.length;
-
-    poly_mesh.meta.meshes.push(mesh_meta);
-    polys = polys.map((poly) => [ poly[0], poly[1], poly[2], poly[3] ?? poly[2] ]);
     poly_mesh.polys.push(...polys);
-    poly_mesh.positions.push(...positions);
     return poly_mesh;
 }
 function uvsOnSave(uvs) { 
-    uvs[1] = Project.texture_height - uvs[1]
+    uvs[1] = Project.texture_height - uvs[1] //Invert y axis
     if (!settings["normalized_uvs"].value) return uvs
     uvs[0] /= Project.texture_width
     uvs[1] /= Project.texture_height
@@ -131,9 +139,10 @@ function uvsOnSave(uvs) {
     clamp(uvs[1], 0, 1)
     return uvs
 }
-//endregion
+//#endregion
 
 //Gets vertices and applys nessary transformations
+//#region Load Functions
 function getVertices(mesh) {
 	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
 		point = rotatePoint(point, mesh.origin, mesh.rotation)
@@ -154,7 +163,7 @@ function polymesh_to_mesh(b, group) {
             for ( let face of polys ) {
                 const unique = [];
                 for (let i = 0; i < face.length; i++) {
-                    if (indexFindArr(unique, face[i]) === -1) {
+                    if (unique.indexOfArray(face[i]) === -1) {
                         unique.push(face[i]);
                     }
                 }
@@ -194,6 +203,7 @@ function polymesh_to_mesh(b, group) {
             for (let vertex of face ) {
                 base_mesh.vertices[`v${vertex[0]}`] = b.poly_mesh.positions[vertex[0]];
                 vertices.push(`v${vertex[0]}`)
+                base_mesh.vNormals[`v${vertex[0]}`] = b.poly_mesh.normals[vertex[1]];
                 const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
                 const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : b.poly_mesh.uvs[vertex[2]][1] );
                 uv[`v${vertex[0]}`] = [ uv1, uv2 ];
@@ -203,22 +213,23 @@ function polymesh_to_mesh(b, group) {
         base_mesh.addTo(group).init();
     }
 }
-
+//#endregion
 //#region Helpers
 
-function getVertexNormal(mesh, vertexKey) {
+function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
+
+    if (settings["skip_normals"].value) return [ 0,1,0 ];
     let normalSum = [0, 0, 0];
     let faceCount = 0;
 
-    for (let faceKey in mesh.faces) {
-        let face = mesh.faces[faceKey];
-        if (face.vertices.includes(vertexKey)) {
-            let faceNormal = face.getNormal();
-            normalSum[0] += faceNormal[0];
-            normalSum[1] += faceNormal[1];
-            normalSum[2] += faceNormal[2];
-            faceCount++;
-        }
+    const faces = vertexFacesMap.get(vertexKey) || []
+    for (let face of faces) {
+        face = mesh.faces[face];
+        let faceNormal = face.getNormal();
+        normalSum[0] += faceNormal[0];
+        normalSum[1] += faceNormal[1];
+        normalSum[2] += faceNormal[2];
+        faceCount++;
     }
 
     let normalLength = Math.sqrt(normalSum[0] * normalSum[0] + normalSum[1] * normalSum[1] + normalSum[2] * normalSum[2]);
@@ -235,11 +246,11 @@ function getVertexNormal(mesh, vertexKey) {
 function multiplyScalar(vec, scalar) {
     return vec.map((coord) => coord * scalar);
 }
-function indexFindArr(arr1, arr2) {
-    return arr1.findIndex(arr => 
+Array.prototype.indexOfArray = function (x) {
+    return this.findIndex(arr => 
         Array.isArray(arr) && 
         arr.length === arr.length && 
-        arr.every((element, index) => element === arr2[index])
+        arr.every((element, index) => element === x[index])
     );
 }
 
@@ -948,7 +959,6 @@ function parseCube(s, group) {
 
 
 //ON SAvE
-
 codec.compile = function compile(options) {
     if (options === undefined) options = {}
 
@@ -1073,6 +1083,7 @@ function compileCube(cube, bone) {
     return template;
 }
 function compileGroup(g) {
+
     if (g.type !== 'group' || g.export == false) return;
     if (!settings.export_empty_groups.value && !g.children.find(child => child.export)) return;
     //Bone
@@ -1105,7 +1116,8 @@ function compileGroup(g) {
     var locators = {};
     var texture_meshes = [];
     var poly_mesh = null;
-
+    let c = 0;
+    const start = performance.now();
     for (var obj of g.children) {
         if (obj.export) {
             if (obj instanceof Cube) {
@@ -1162,8 +1174,9 @@ function compileGroup(g) {
                 texture_meshes.push(texmesh);
             } 
         }
+        
     }
-
+    const end = performance.now();
     if (cubes.length) {
         bone.cubes = cubes
     }
@@ -1175,11 +1188,165 @@ function compileGroup(g) {
     }
     if (poly_mesh !== null) {
         bone.poly_mesh = poly_mesh
+        console.log(`Compiled in ${end - start}ms`);
+        console.log(poly_mesh.positions.length || 0)
+        console.log((end - start) / poly_mesh.positions.length || 0 )
     }
     return bone;
 }
 
 
+
+})();
+
+
+
+// File: importOBJ.js
+(function() {
+//Makes changes to the import obj function
+let import_obj_dialog;
+BarItems['import_obj'].click = function () {
+    function importOBJ(result) {
+        let mtl_materials = {};
+        if (result.mtl) {
+            let mtl_lines = result.mtl.content.split(/[\r\n]+/);
+            let current_material;
+            for (let line of mtl_lines) {
+                let args = line.split(/\s+/).filter(arg => typeof arg !== 'undefined' && arg !== '');
+                let cmd = args.shift();
+                switch (cmd) {
+                    case 'newmtl': {
+                        current_material = mtl_materials[args[0]] = {};
+                        break;
+                    }
+                    case 'map_Kd': {
+                        let texture_name = args[0];
+                        let texture_path = isApp ? PathModule.join(result.mtl.path, '..', texture_name) : '';
+                        let texture = new Texture().fromPath(texture_path).add();
+                        current_material.texture = texture;
+                    }
+                }
+            }
+        }
+        
+        let {content} = result.obj;
+        let lines = content.split(/[\r\n]+/);
+
+        function toVector(args, length) {
+            return args.map(v => parseFloat(v));
+        }
+
+        let mesh;
+        let vertices = [];
+        let vertex_keys = {};
+        let vertex_textures = [];
+        let vertex_normals = [];
+        let meshes = [];
+        let vector1 = new THREE.Vector3();
+        let vector2 = new THREE.Vector3();
+        let current_texture;
+
+        Undo.initEdit({outliner: true, elements: meshes, selection: true});
+
+        lines.forEach(line => {
+
+            if (line.substr(0, 1) == '#' || !line) return;
+
+            let args = line.split(/\s+/).filter(arg => typeof arg !== 'undefined' && arg !== '');
+            let cmd = args.shift();
+
+            if (['o', 'g'].includes(cmd) || (cmd == 'v' && !mesh)) {
+                mesh = new Mesh({
+                    name: ['o', 'g'].includes(cmd) ? args[0] : 'unknown',
+                    vertices: {}
+                })
+                mesh.vNormals = [];
+                vertex_keys = {};
+                meshes.push(mesh);
+            }
+            if (cmd == 'v') {
+                vertices.push(toVector(args, 3).map(v => v * result.scale));
+            }
+            if (cmd == 'vt') {
+                vertex_textures.push(toVector(args, 2))
+            }
+            if (cmd == 'vn') {
+                vertex_normals.push(toVector(args, 3))
+            }
+            if (cmd == 'f') {
+                let f = {
+                    vertices: [],
+                    vertex_textures: [],
+                    vertex_normals: [],
+                }
+                args.forEach((triplet, i) => {
+                    if (i >= 4) return;
+                    let [v, vt, vn] = triplet.split('/').map(v => parseInt(v));
+                    if (!vertex_keys[ v-1 ]) {
+                        vertex_keys[ v-1 ] = mesh.addVertices(vertices[v-1])[0];
+                    }
+                    f.vertices.push(vertex_keys[ v-1 ]);
+                    f.vertex_textures.push(vertex_textures[ vt-1 ]);
+                    f.vertex_normals.push(vertex_normals[ vn-1 ]);
+                    
+                })
+                let uv = {};
+                f.vertex_textures.forEach((vt, i) => {
+                    let key = f.vertices[i];
+                    if (vt instanceof Array) {
+                        uv[key] = [
+                            vt[0] * Project.texture_width,
+                            (1-vt[1]) * Project.texture_width
+                        ];
+                    } else {
+                        uv[key] = [0, 0];
+                    }
+                })
+                let face = new MeshFace(mesh, {
+                    vertices: f.vertices,
+                    uv,
+                    texture: current_texture
+                })
+                face.vertices.forEach( (v, i) => {
+                    mesh.vNormals[v] = f.vertex_normals[i];
+                })
+                mesh.addFaces(face);
+
+                if (f.vertex_normals.find(v => v)) {
+
+                    vector1.fromArray(face.getNormal());
+                    vector2.fromArray(f.vertex_normals[0]);
+                    let angle = vector1.angleTo(vector2);
+                    if (angle > Math.PI/2) {
+                        face.invert();
+                    }
+                }
+            }
+            if (cmd == 'usemtl') {
+                current_texture = mtl_materials[args[0]]?.texture;
+            }
+        })
+        meshes.forEach(mesh => {
+            mesh.init();
+        })
+
+        Undo.finishEdit('Import OBJ');
+    }
+    if (!import_obj_dialog) {
+        import_obj_dialog = new Dialog('import_obj', {
+            title: 'action.import_obj',
+            form: {
+                obj: {type: 'file', label: 'dialog.import_obj.obj', return_as: 'file', extensions: ['obj'], resource_id: 'obj', filetype: 'OBJ Wavefront Model'},
+                mtl: {type: 'file', label: 'dialog.import_obj.mtl', return_as: 'file', extensions: ['mtl'], resource_id: 'obj', filetype: 'OBJ Material File'},
+                scale: {type: 'number', label: 'dialog.import_obj.scale', value: 16},
+            },
+            onConfirm(result) {
+                importOBJ(result);
+            }
+        })
+    }
+    import_obj_dialog.show();
+}
 
 })();
 
