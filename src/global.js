@@ -94,24 +94,24 @@ function mesh_to_polymesh(poly_mesh, mesh) {
         else vKeyTonIndex.set(key, normalHash[normal], vertexFacesMap)
     }
 
-	let polys = Object.values(mesh.faces).map( (/** @type {MeshFace} */ face ) => { 
-        const poly = face.getSortedVertices().map( (vertexKey) => {
-			let uIndex = -1;
-            
-            const uv = uvsOnSave([face.uv[vertexKey][0], face.uv[vertexKey][1]])
-            const index = poly_mesh.uvs.indexOfArray(uv);
-			if (poly_mesh.uvs.indexOfArray(uv) === -1 ) {
-				uIndex = poly_mesh.uvs.length;
+	const uvMap = new Map();
+    let polys = Object.values(mesh.faces).map((face) => {
+        const poly = face.getSortedVertices().map((vertexKey) => {
+            const [u, v] = face.uv[vertexKey];
+            const uv = uvsOnSave([u, v]);
+            const uIndex = uvMap.get(uv.toString()) ?? (() => {
+                const index = poly_mesh.uvs.length;
                 poly_mesh.uvs.push(uv);
-			}
-			else uIndex = index;
-
-			return [ vKeyTopIndex.get(vertexKey), vKeyTonIndex.get(vertexKey), uIndex ];
-		})
+                uvMap.set(uv.toString(), index);
+                return index;
+            })();
+        
+            return [vKeyTopIndex.get(vertexKey), vKeyTonIndex.get(vertexKey), uIndex];
+        });
         if (poly.length < 4) poly.push(poly[2]);
-		return poly
-	})
-    
+        return poly;
+    });
+        
     if (settings["meta_data"].value) {
         //Meta Data for mesh to be exported
         //Minecraft doesn't support multiple meshes under the same group
