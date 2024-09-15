@@ -50,7 +50,12 @@ if (!settings["skip_normals"]) {
 
 //Code that happens on import
 //#region Save Functions
+
+//Input of poly_mesh will either be undefined or the result of mesh_to_polymesh()
+//Making a single poly_mesh per bone
 function mesh_to_polymesh(poly_mesh, mesh) {
+    console.time('mesh_to_polymesh');
+
     poly_mesh ??= 
     {
         meta: settings["meta_data"].value ? 
@@ -66,7 +71,7 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 
 	const vKeyTopIndex = new Map();
     const vKeyTonIndex = new Map();
-    const normalHash = {};
+    const normals = new Map();
 
     //Apply rotaion and translation and return without changing original object
     const vertexFacesMap = new Map();
@@ -87,12 +92,12 @@ function mesh_to_polymesh(poly_mesh, mesh) {
 
         const normal = getVertexNormal(mesh, key, vertexFacesMap);
 
-        if (!normalHash[normal]) {
+        if (!normals.has(normal)) {
             vKeyTonIndex.set(key, poly_mesh.normals.length);
-            normalHash[normal] = poly_mesh.normals.length;
+            normals.set(normal, poly_mesh.normals.length);
             poly_mesh.normals.push(normal);
         }
-        else vKeyTonIndex.set(key, normalHash[normal], vertexFacesMap)
+        else vKeyTonIndex.set(key, normals.get(normal))
     }
 
 	const uvMap = new Map();
@@ -106,13 +111,13 @@ function mesh_to_polymesh(poly_mesh, mesh) {
                 uvMap.set(uv.toString(), index);
                 return index;
             })();
-        
+
             return [vKeyTopIndex.get(vertexKey), vKeyTonIndex.get(vertexKey), uIndex];
         });
         if (poly.length < 4) poly.push(poly[2]);
         return poly;
     });
-        
+
     if (settings["meta_data"].value) {
         //Meta Data for mesh to be exported
         //Minecraft doesn't support multiple meshes under the same group
@@ -127,7 +132,10 @@ function mesh_to_polymesh(poly_mesh, mesh) {
         }
         poly_mesh.meta.meshes.push(mesh_meta);
     }
-    poly_mesh.polys.push(...polys);
+    //Spread opertator fails here due to an Range Error with a super high face count ( ~200k )
+    //+ is faster for super large meshs
+    for (let poly of polys) poly_mesh.polys.push(poly);
+    console.timeEnd('mesh_to_polymesh');
     return poly_mesh;
 }
 function uvsOnSave(uvs) { 
