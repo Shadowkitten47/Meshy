@@ -1,13 +1,16 @@
 //This is a bundle of JS files
 
 
-//Code that happens on import
-//#region Save Functions
 
-//Input of poly_mesh will either be undefined or the result of mesh_to_polymesh()
-//Making a single poly_mesh per bone
-function mesh_to_polymesh(poly_mesh, mesh) {
-    poly_mesh ??= 
+//#region Save Functions
+/**
+ * Converts a mesh to a polymesh.
+ * @param {Object} polyMesh The polymesh to save to. If not defined, a new polymesh will be created.
+ * @param {Mesh} mesh The mesh to save.
+ * @returns {Object} The polymesh with the mesh saved to it.
+ */
+function compileMesh(polyMesh, mesh) {
+    polyMesh ??= 
     {
         meta: settings["meta_data"].value ? 
         {
@@ -41,15 +44,15 @@ function mesh_to_polymesh(poly_mesh, mesh) {
     }
 
     for (let [key, pos] of getVertices(mesh)) {
-        postionMap.set(key, poly_mesh.positions.length);
-        poly_mesh.positions.push(pos);
+        postionMap.set(key, polyMesh.positions.length);
+        polyMesh.positions.push(pos);
 
         const normal = getVertexNormal(mesh, key, vertexFacesMap);
 
         if (!normals.has(normal)) {
-            normalMap.set(key, poly_mesh.normals.length);
-            normals.set(normal, poly_mesh.normals.length);
-            poly_mesh.normals.push(normal);
+            normalMap.set(key, polyMesh.normals.length);
+            normals.set(normal, polyMesh.normals.length);
+            polyMesh.normals.push(normal);
         }
         else normalMap.set(key, normals.get(normal))
     }
@@ -60,8 +63,8 @@ function mesh_to_polymesh(poly_mesh, mesh) {
             const [u, v] = face.uv[vertexKey];
             const uv = uvsOnSave([u, v]);
             const uIndex = uvMap.get(uv.toString()) ?? (() => {
-                const index = poly_mesh.uvs.length;
-                poly_mesh.uvs.push(uv);
+                const index = polyMesh.uvs.length;
+                polyMesh.uvs.push(uv);
                 uvMap.set(uv.toString(), index);
                 return index;
             })();
@@ -82,23 +85,23 @@ function mesh_to_polymesh(poly_mesh, mesh) {
             position: mesh.position,
             origin: mesh.origin,
             rotation: mesh.rotation,
-            start: poly_mesh.polys.length,
+            start: polyMesh.polys.length,
             length: polys.length
         }
-        poly_mesh.meta.meshes.push(mesh_meta);
+        polyMesh.meta.meshes.push(mesh_meta);
     }
     //Spread opertator fails here due to an Range Error with a super high face count ( ~200k )
     //+ is faster for super large meshs
-    for (let poly of polys) poly_mesh.polys.push(poly);
-    return poly_mesh;
+    for (let poly of polys) polyMesh.polys.push(poly);
+    return polyMesh;
 }
+
+
 function uvsOnSave(uvs) { 
     uvs[1] = Project.texture_height - uvs[1] //Invert y axis
     if (!settings["normalized_uvs"].value) return uvs
     uvs[0] /= Project.texture_width
     uvs[1] /= Project.texture_height
-    Math.clamp(uvs[0], 0, 1)
-    Math.clamp(uvs[1], 0, 1)
     return uvs
 }
 //#endregion
@@ -108,25 +111,24 @@ function uvsOnSave(uvs) {
 function getVertices(mesh) {
 	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
 		point = rotatePoint(point, mesh.origin, mesh.rotation)
-        Array.prototype.V3_add
         point.V3_add(-mesh.position[0], mesh.position[1], mesh.position[2])
 		return [ key, point ]
 	}) 
 	return verts;
 }
 
-function polymesh_to_mesh(b, group) {
+function parseMesh(polyMesh, group) {
     /**
      * Adds meta data to mesh. This is to recover the original objects after exporting
      * sense only one can be save to a group at a time this also used for saving the rotation and position.
      */
-    if (b.poly_mesh.meta) {
-        for (let meta of b.poly_mesh.meta.meshes) {
-            const mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
+    if (polyMesh.meta) {
+        for (let meta of polyMesh.meta.meshes) {
+            const mesh = new Mesh({name: meta.name, autouv: 0, color: group.color, vertices: []});
             meta.position ??= [0, 0, 0];
             meta.rotation ??= [0, 0, 0];
             meta.origin ??= [0, 0, 0];
-            const polys = b.poly_mesh.polys.slice(meta.start, meta.start + meta.length);
+            const polys = polyMesh.polys.slice(meta.start, meta.start + meta.length);
             for ( let face of polys ) {
                 const unique = new Set();
                 const vertices = []
@@ -138,14 +140,14 @@ function polymesh_to_mesh(b, group) {
                     unique.add(point.toString());
 
                     //Do the transformations to revert the vertices
-                    const postion = rotatePoint(b.poly_mesh.positions[point[0]].V3_add(meta.position[0], -meta.position[1], -meta.position[2]), meta.origin, multiplyScalar(meta.rotation, -1));
+                    const postion = rotatePoint(polyMesh.positions[point[0]].V3_add(meta.position[0], -meta.position[1], -meta.position[2]), meta.origin, multiplyScalar(meta.rotation, -1));
                     //Save the point to the mesh
                     mesh.vertices[String(point[0])] = postion;
                     vertices.push(String(point[0]));
 
-                    const uv = b.poly_mesh.uvs[point[2]]
+                    const uv = polyMesh.uvs[point[2]]
                     uv[1] = Project.texture_height - uv[1]  //Invert y axis
-                    if (b.poly_mesh.normalized_uvs) { 
+                    if (polyMesh.normalized_uvs) { 
                         uv.V2_multiply(Project.texture_width, Project.texture_height)
                     }
                     uvs[String(point[0])] = uv;
@@ -159,8 +161,8 @@ function polymesh_to_mesh(b, group) {
         }
     }
     else {
-        const mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
-        for ( let face of b.poly_mesh.polys ) {
+        const mesh = new Mesh({name: "mesh", autouv: 0, color: group.color, vertices: []});
+        for ( let face of polyMesh.polys ) {
             const unique = new Set();
             const vertices = []
             const uvs = {}
@@ -168,12 +170,12 @@ function polymesh_to_mesh(b, group) {
                 if (unique.has(point.toString())) continue;
                 unique.add(point.toString());
 
-                const postion = b.poly_mesh.positions[point[0]]
+                const postion = polyMesh.positions[point[0]]
                 mesh.vertices[String(point[0])] = postion;
                 vertices.push(String(point[0]));
-                const uv = b.poly_mesh.uvs[point[2]]
+                const uv = polyMesh.uvs[point[2]]
                 uv[1] = Project.texture_height - uv[1]  //Invert y axis
-                if (b.poly_mesh.normalized_uvs) { 
+                if (polyMesh.normalized_uvs) { 
                     uv.V2_multiply(Project.texture_width, Project.texture_height)
                 }
                 uvs[String(point[0])] = uv;
@@ -183,8 +185,6 @@ function polymesh_to_mesh(b, group) {
         mesh.addTo(group).init();
     }
 }
-//#endregion
-//#region Helpers
 
 function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
     if (settings["skip_normals"].value) return [ 0,1,0 ];
@@ -216,11 +216,6 @@ function multiplyScalar(vec, scalar) {
     return vec.map((coord) => coord * scalar);
 }
 
-//Minecraft polys_lack and overall pos and rotation
-//So we need to apply them to each vertex on export
-function translatePoint(point, center) {
-    return [ point[0] - center[0], point[1] + center[1], point[2] + center[2] ];
-}
 function rotatePoint(point, center, rotation) {
     // Convert rotation angles to radians
     const [rx, ry, rz] = rotation.map(Math.degToRad);
@@ -250,8 +245,6 @@ function rotatePoint(point, center, rotation) {
         z + center[2]
     ];
 }
-//#endregion
-
 
 //#region Source Files
 
@@ -259,8 +252,211 @@ function rotatePoint(point, center, rotation) {
 // File: bedrock-old.js
 (function() {
 var codec = Codecs["bedrock_old"]
- 
-//Mostly the same
+codec.parse = parse;
+codec.compile = compile;
+
+/*
+	master/js/io/formats/bedrock_old.js
+	function codec.parse
+	function codec.compile
+
+	function parseGeometry
+*/
+
+function parse (data, path) {
+	let geometries = [];
+	for (let key in data) {
+		if (typeof data[key] !== 'object') continue;
+		geometries.push({
+			name: key,
+			object: data[key]
+		});
+	}
+	if (geometries.length === 1) {
+		parseGeometry(geometries[0]);
+		return;
+	} else if (isApp && BedrockEntityManager.CurrentContext?.geometry) {
+		return parseGeometry(geometries.find(geo => geo.name == BedrockEntityManager.CurrentContext.geometry));
+	}
+
+	geometries.forEach(geo => {
+		geo.uuid = guid();
+
+		geo.bonecount = 0;
+		geo.cubecount = 0;
+		if (geo.object.bones instanceof Array) {
+			geo.object.bones.forEach(bone => {
+				geo.bonecount++;
+				if (bone.cubes instanceof Array) geo.cubecount += bone.cubes.length;
+			})
+		}
+	})
+
+	let selected = null;
+	new Dialog({
+		id: 'bedrock_model_select',
+		title: 'dialog.select_model.title',
+		buttons: ['Import', 'dialog.cancel'],
+		component: {
+			data() {return {
+				search_term: '',
+				geometries,
+				selected: null,
+			}},
+			computed: {
+				filtered_geometries() {
+					if (!this.search_term) return this.geometries;
+					let term = this.search_term.toLowerCase();
+					return this.geometries.filter(geo => {
+						return geo.name.toLowerCase().includes(term)
+					})
+				}
+			},
+			methods: {
+				selectGeometry(geo) {
+					this.selected = selected = geo;
+				},
+				open(geo) {
+					Dialog.open.hide();
+					parseGeometry(geo);
+				},
+				tl
+			},
+			template: `
+				<div>
+					<search-bar v-model="search_term"></search-bar>
+					<ul class="list" id="model_select_list">
+						<li v-for="geometry in filtered_geometries" :key="geometry.uuid" :class="{selected: geometry == selected}" @click="selectGeometry(geometry)" @dblclick="open(geometry)">
+							<p>{{ geometry.name }}</p>
+							<label>{{ geometry.bonecount+' ${tl('dialog.select_model.bones')}' }}, {{ geometry.cubecount+' ${tl('dialog.select_model.cubes')}' }}</label>
+						</li>
+					</ul>
+				</div>
+			`
+		},
+		onConfirm() {
+			parseGeometry(selected);
+		}
+	}).show();
+}
+
+function compile(options) {
+	if (options === undefined) options = {}
+	var entitymodel = {}
+	entitymodel.texturewidth = Project.texture_width;
+	entitymodel.textureheight = Project.texture_height;
+	var bones = []
+	var visible_box = new THREE.Box3()
+
+	var groups = getAllGroups();
+	var loose_elements = [];
+	Outliner.root.forEach(obj => {
+		if (obj.type === 'cube' || obj.type == 'locator') {
+			loose_elements.push(obj)
+		}
+	})
+	if (loose_elements.length) {
+		let group = new Group({
+			name: 'bb_main'
+		});
+		group.children.push(...loose_elements);
+		group.is_catch_bone = true;
+		group.createUniqueName();
+		groups.splice(0, 0, group);
+	}
+
+	groups.forEach(function(g) {
+		if (g.type !== 'group' || g.export == false) return;
+		if (!settings.export_empty_groups.value && !g.children.find(child => child.export)) return;
+		//Bone
+		var bone = {}
+		bone.name = g.name
+		if (g.parent.type === 'group') {
+			bone.parent = g.parent.name
+		}
+		bone.pivot = g.origin.slice()
+		bone.pivot[0] *= -1
+		if (!g.rotation.allEqual(0)) {
+			bone.rotation = [
+				-g.rotation[0],
+				-g.rotation[1],
+				g.rotation[2]
+			]
+		}
+		if (g.reset) bone.reset = true;
+		if (g.mirror_uv && Project.box_uv) bone.mirror = true;
+		if (g.material) bone.material = g.material;
+
+		//Elements
+		var cubes = []
+		var locators = {};
+		var poly_mesh = null;
+
+		for (var obj of g.children) {
+			if (obj.export) {
+				if (obj instanceof Cube) {
+					var template = new oneLiner()
+					template.origin = obj.from.slice()
+					template.size = obj.size()
+					template.origin[0] = -(template.origin[0] + template.size[0])
+					template.uv = obj.uv_offset
+					if (obj.inflate && typeof obj.inflate === 'number') {
+						template.inflate = obj.inflate
+					}
+					if (obj.mirror_uv === !bone.mirror) {
+						template.mirror = obj.mirror_uv
+					}
+					//Visible Bounds
+					var mesh = obj.mesh
+					if (mesh) {
+						visible_box.expandByObject(mesh)
+					}
+					cubes.push(template)
+
+				} else if (obj instanceof Locator) {
+
+					locators[obj.name] = obj.position.slice();
+					locators[obj.name][0] *= -1;
+				} else if (obj instanceof Mesh ) {
+					poly_mesh = compileMesh(poly_mesh, obj);
+				}
+			}
+		}
+		if (cubes.length) {
+			bone.cubes = cubes
+		}
+		if (Object.keys(locators).length) {
+			bone.locators = locators
+		}
+		if (poly_mesh !== null) {
+			bone.poly_mesh = poly_mesh
+		}
+		bones.push(bone)
+	})
+
+	if (bones.length && options.visible_box !== false) {
+
+		let visible_box = calculateVisibleBox();
+		entitymodel.visible_bounds_width = visible_box[0] || 0;
+		entitymodel.visible_bounds_height = visible_box[1] || 0;
+		entitymodel.visible_bounds_offset = [0, visible_box[2] || 0, 0]
+	}
+	if (bones.length) {
+		entitymodel.bones = bones
+	}
+	this.dispatchEvent('compile', {model: entitymodel, options});
+
+	if (options.raw) {
+		return entitymodel
+	} else {
+		var model_name = 'geometry.' + (Project.geometry_name||Project.name||'unknown')
+		return autoStringify({
+			format_version: '1.10.0',
+			[model_name]: entitymodel
+		})
+	}
+}
+
 function parseGeometry(data) {
 	let geometry_name = data.name.replace(/^geometry\./, '');
 
@@ -341,7 +537,7 @@ function parseGeometry(data) {
 			}
 			//Changed Code
 			if (b.poly_mesh) {
-				polymesh_to_mesh(b, group)
+				parseMesh(b.poly_mesh, group)
 			}
 			//End if change
 			if (b.children) {
@@ -380,7 +576,6 @@ function parseGeometry(data) {
 
 	codec.dispatchEvent('parsed', {model: data.object});
 
-	loadTextureDraggable()
 	Canvas.updateAllBones()
 	setProjectTitle()
 	if (isApp && Project.geometry_name && Project.BedrockEntityManager) {
@@ -389,204 +584,6 @@ function parseGeometry(data) {
 	Validator.validate()
 	updateSelection()
 }
-
-
-
-//Same as source just need to change parseGeometry 
-codec.parse = function (data, path) {
-	let geometries = [];
-	for (let key in data) {
-		if (typeof data[key] !== 'object') continue;
-		geometries.push({
-			name: key,
-			object: data[key]
-		});
-	}
-	if (geometries.length === 1) {
-		parseGeometry(geometries[0]);
-		return;
-	} else if (isApp && BedrockEntityManager.CurrentContext?.geometry) {
-		return parseGeometry(geometries.find(geo => geo.name == BedrockEntityManager.CurrentContext.geometry));
-	}
-
-	geometries.forEach(geo => {
-		geo.uuid = guid();
-
-		geo.bonecount = 0;
-		geo.cubecount = 0;
-		if (geo.object.bones instanceof Array) {
-			geo.object.bones.forEach(bone => {
-				geo.bonecount++;
-				if (bone.cubes instanceof Array) geo.cubecount += bone.cubes.length;
-			})
-		}
-	})
-
-	let selected = null;
-	new Dialog({
-		id: 'bedrock_model_select',
-		title: 'dialog.select_model.title',
-		buttons: ['Import', 'dialog.cancel'],
-		component: {
-			data() {return {
-				search_term: '',
-				geometries,
-				selected: null,
-			}},
-			computed: {
-				filtered_geometries() {
-					if (!this.search_term) return this.geometries;
-					let term = this.search_term.toLowerCase();
-					return this.geometries.filter(geo => {
-						return geo.name.toLowerCase().includes(term)
-					})
-				}
-			},
-			methods: {
-				selectGeometry(geo) {
-					this.selected = selected = geo;
-				},
-				open(geo) {
-					Dialog.open.hide();
-					parseGeometry(geo);
-				},
-				tl
-			},
-			template: `
-				<div>
-					<search-bar v-model="search_term"></search-bar>
-					<ul class="list" id="model_select_list">
-						<li v-for="geometry in filtered_geometries" :key="geometry.uuid" :class="{selected: geometry == selected}" @click="selectGeometry(geometry)" @dblclick="open(geometry)">
-							<p>{{ geometry.name }}</p>
-							<label>{{ geometry.bonecount+' ${tl('dialog.select_model.bones')}' }}, {{ geometry.cubecount+' ${tl('dialog.select_model.cubes')}' }}</label>
-						</li>
-					</ul>
-				</div>
-			`
-		},
-		onConfirm() {
-			parseGeometry(selected);
-		}
-	}).show();
-}
-
-codec.compile = function compile(options) {
-	if (options === undefined) options = {}
-	var entitymodel = {}
-	entitymodel.texturewidth = Project.texture_width;
-	entitymodel.textureheight = Project.texture_height;
-	var bones = []
-	var visible_box = new THREE.Box3()
-
-	var groups = getAllGroups();
-	var loose_elements = [];
-	Outliner.root.forEach(obj => {
-		if (obj.type === 'cube' || obj.type == 'locator') {
-			loose_elements.push(obj)
-		}
-	})
-	if (loose_elements.length) {
-		let group = new Group({
-			name: 'bb_main'
-		});
-		group.children.push(...loose_elements);
-		group.is_catch_bone = true;
-		group.createUniqueName();
-		groups.splice(0, 0, group);
-	}
-
-	groups.forEach(function(g) {
-		if (g.type !== 'group' || g.export == false) return;
-		if (!settings.export_empty_groups.value && !g.children.find(child => child.export)) return;
-		//Bone
-		var bone = {}
-		bone.name = g.name
-		if (g.parent.type === 'group') {
-			bone.parent = g.parent.name
-		}
-		bone.pivot = g.origin.slice()
-		bone.pivot[0] *= -1
-		if (!g.rotation.allEqual(0)) {
-			bone.rotation = [
-				-g.rotation[0],
-				-g.rotation[1],
-				g.rotation[2]
-			]
-		}
-		if (g.reset) bone.reset = true;
-		if (g.mirror_uv && Project.box_uv) bone.mirror = true;
-		if (g.material) bone.material = g.material;
-
-		//Elements
-		var cubes = []
-		var locators = {};
-		var poly_mesh = null;
-
-		for (var obj of g.children) {
-			if (obj.export) {
-				if (obj instanceof Cube) {
-					var template = new oneLiner()
-					template.origin = obj.from.slice()
-					template.size = obj.size()
-					template.origin[0] = -(template.origin[0] + template.size[0])
-					template.uv = obj.uv_offset
-					if (obj.inflate && typeof obj.inflate === 'number') {
-						template.inflate = obj.inflate
-					}
-					if (obj.mirror_uv === !bone.mirror) {
-						template.mirror = obj.mirror_uv
-					}
-					//Visible Bounds
-					var mesh = obj.mesh
-					if (mesh) {
-						visible_box.expandByObject(mesh)
-					}
-					cubes.push(template)
-
-				} else if (obj instanceof Locator) {
-
-					locators[obj.name] = obj.position.slice();
-					locators[obj.name][0] *= -1;
-				} else if (obj instanceof Mesh ) {
-					poly_mesh = mesh_to_polymesh(poly_mesh, obj);
-				}
-			}
-		}
-		if (cubes.length) {
-			bone.cubes = cubes
-		}
-		if (Object.keys(locators).length) {
-			bone.locators = locators
-		}
-		if (poly_mesh !== null) {
-			bone.poly_mesh = poly_mesh
-		}
-		bones.push(bone)
-	})
-
-	if (bones.length && options.visible_box !== false) {
-
-		let visible_box = calculateVisibleBox();
-		entitymodel.visible_bounds_width = visible_box[0] || 0;
-		entitymodel.visible_bounds_height = visible_box[1] || 0;
-		entitymodel.visible_bounds_offset = [0, visible_box[2] || 0, 0]
-	}
-	if (bones.length) {
-		entitymodel.bones = bones
-	}
-	this.dispatchEvent('compile', {model: entitymodel, options});
-
-	if (options.raw) {
-		return entitymodel
-	} else {
-		var model_name = 'geometry.' + (Project.geometry_name||Project.name||'unknown')
-		return autoStringify({
-			format_version: '1.10.0',
-			[model_name]: entitymodel
-		})
-	}
-}
-
 
 
 
@@ -601,10 +598,25 @@ codec.compile = function compile(options) {
 // File: bedrock.js
 (function() {
 var codec = Codecs["bedrock"]
- 
-//ON LOAD
+codec.compile = compile;
+codec.parse = parse;
 
-codec.parse = function parse(data, path) {
+/*
+    master/js/io/formats/bedrock.js
+    function codec.parse
+    function codec.compile
+    
+    function parseGeometry
+    function parseBone
+    function parseCube
+
+    function compileGroup
+    function compileCube
+    function getFormatVersion
+*/
+
+//#region parse
+function parse(data, path) {
     if (Format != Formats.bedrock && Format != Formats.bedrock_block) Formats.bedrock.select()
 
     let geometries = [];
@@ -623,7 +635,6 @@ codec.parse = function parse(data, path) {
 
     geometries.forEach(geo => {
         geo.uuid = guid();
-
         geo.bonecount = 0;
         geo.cubecount = 0;
         if (geo.object.bones instanceof Array) {
@@ -734,7 +745,7 @@ function parseGeometry(data) {
 
     codec.dispatchEvent('parsed', {model: data.object});
 
-    loadTextureDraggable()
+    
     Canvas.updateAllBones()
     setProjectTitle()
     if (isApp && Project.geometry_name) {
@@ -744,6 +755,7 @@ function parseGeometry(data) {
     Validator.validate()
     updateSelection()
 }
+
 function parseBone(b, bones, parent_list) {
     var group = new Group({
         name: b.name,
@@ -822,7 +834,7 @@ function parseBone(b, bones, parent_list) {
 
     //Change
     if (b.poly_mesh) {
-        polymesh_to_mesh(b, group)
+        parseMesh(b.poly_mesh, group)
     }
     //End Change
     var parent_group = 'root';
@@ -908,10 +920,11 @@ function parseCube(s, group) {
     base_cube.addTo(group).init();
     return base_cube;
 }
+//#endregion
 
 
-//ON SAvE
-codec.compile = function compile(options) {
+//#region compile
+function compile(options) {
     if (options === undefined) options = {}
 
     var entitymodel = {}
@@ -1034,7 +1047,6 @@ function compileCube(cube, bone) {
     }
     return template;
 }
-let counter = 0;
 function compileGroup(g) {
 
     if (g.type !== 'group' || g.export == false) return;
@@ -1075,7 +1087,7 @@ function compileGroup(g) {
                 let template = compileCube(obj, bone);
                 cubes.push(template);
             } else if (obj instanceof Mesh ) {
-                poly_mesh = mesh_to_polymesh(poly_mesh, obj);
+                poly_mesh = compileMesh(poly_mesh, obj);
             } else if (obj instanceof Locator || obj instanceof NullObject) {
                 let key = obj.name;
                 if (obj instanceof NullObject) key = '_null_' + key;
@@ -1142,159 +1154,8 @@ function compileGroup(g) {
     }
     return bone;
 }
+//#endregion
 
-
-
-})();
-
-
-
-// File: importOBJ.js
-(function() {
-//Makes changes to the import obj function
-let import_obj_dialog;
-BarItems['import_obj'].click = function () {
-    function importOBJ(result) {
-        let mtl_materials = {};
-        if (result.mtl) {
-            let mtl_lines = result.mtl.content.split(/[\r\n]+/);
-            let current_material;
-            for (let line of mtl_lines) {
-                let args = line.split(/\s+/).filter(arg => typeof arg !== 'undefined' && arg !== '');
-                let cmd = args.shift();
-                switch (cmd) {
-                    case 'newmtl': {
-                        current_material = mtl_materials[args[0]] = {};
-                        break;
-                    }
-                    case 'map_Kd': {
-                        let texture_name = args[0];
-                        let texture_path = isApp ? PathModule.join(result.mtl.path, '..', texture_name) : '';
-                        let texture = new Texture().fromPath(texture_path).add();
-                        current_material.texture = texture;
-                    }
-                }
-            }
-        }
-        
-        let {content} = result.obj;
-        let lines = content.split(/[\r\n]+/);
-
-        function toVector(args, length) {
-            return args.map(v => parseFloat(v));
-        }
-
-        let mesh;
-        let vertices = [];
-        let vertex_keys = {};
-        let vertex_textures = [];
-        let vertex_normals = [];
-        let meshes = [];
-        let vector1 = new THREE.Vector3();
-        let vector2 = new THREE.Vector3();
-        let current_texture;
-
-        Undo.initEdit({outliner: true, elements: meshes, selection: true});
-
-        lines.forEach(line => {
-
-            if (line.substr(0, 1) == '#' || !line) return;
-
-            let args = line.split(/\s+/).filter(arg => typeof arg !== 'undefined' && arg !== '');
-            let cmd = args.shift();
-
-            if (['o', 'g'].includes(cmd) || (cmd == 'v' && !mesh)) {
-                mesh = new Mesh({
-                    name: ['o', 'g'].includes(cmd) ? args[0] : 'unknown',
-                    vertices: {}
-                })
-                mesh.vNormals = [];
-                vertex_keys = {};
-                meshes.push(mesh);
-            }
-            if (cmd == 'v') {
-                vertices.push(toVector(args, 3).map(v => v * result.scale));
-            }
-            if (cmd == 'vt') {
-                vertex_textures.push(toVector(args, 2))
-            }
-            if (cmd == 'vn') {
-                vertex_normals.push(toVector(args, 3))
-            }
-            if (cmd == 'f') {
-                let f = {
-                    vertices: [],
-                    vertex_textures: [],
-                    vertex_normals: [],
-                }
-                args.forEach((triplet, i) => {
-                    if (i >= 4) return;
-                    let [v, vt, vn] = triplet.split('/').map(v => parseInt(v));
-                    if (!vertex_keys[ v-1 ]) {
-                        vertex_keys[ v-1 ] = mesh.addVertices(vertices[v-1])[0];
-                    }
-                    f.vertices.push(vertex_keys[ v-1 ]);
-                    f.vertex_textures.push(vertex_textures[ vt-1 ]);
-                    f.vertex_normals.push(vertex_normals[ vn-1 ]);
-                    
-                })
-                let uv = {};
-                f.vertex_textures.forEach((vt, i) => {
-                    let key = f.vertices[i];
-                    if (vt instanceof Array) {
-                        uv[key] = [
-                            vt[0] * Project.texture_width,
-                            (1-vt[1]) * Project.texture_width
-                        ];
-                    } else {
-                        uv[key] = [0, 0];
-                    }
-                })
-                let face = new MeshFace(mesh, {
-                    vertices: f.vertices,
-                    uv,
-                    texture: current_texture
-                })
-                face.vertices.forEach( (v, i) => {
-                    mesh.vNormals[v] = f.vertex_normals[i];
-                })
-                mesh.addFaces(face);
-
-                if (f.vertex_normals.find(v => v)) {
-
-                    vector1.fromArray(face.getNormal());
-                    vector2.fromArray(f.vertex_normals[0]);
-                    let angle = vector1.angleTo(vector2);
-                    if (angle > Math.PI/2) {
-                        face.invert();
-                    }
-                }
-            }
-            if (cmd == 'usemtl') {
-                current_texture = mtl_materials[args[0]]?.texture;
-            }
-        })
-        meshes.forEach(mesh => {
-            mesh.init();
-        })
-
-        Undo.finishEdit('Import OBJ');
-    }
-    if (!import_obj_dialog) {
-        import_obj_dialog = new Dialog('import_obj', {
-            title: 'action.import_obj',
-            form: {
-                obj: {type: 'file', label: 'dialog.import_obj.obj', return_as: 'file', extensions: ['obj'], resource_id: 'obj', filetype: 'OBJ Wavefront Model'},
-                mtl: {type: 'file', label: 'dialog.import_obj.mtl', return_as: 'file', extensions: ['mtl'], resource_id: 'obj', filetype: 'OBJ Material File'},
-                scale: {type: 'number', label: 'dialog.import_obj.scale', value: 16},
-            },
-            onConfirm(result) {
-                importOBJ(result);
-            }
-        })
-    }
-    import_obj_dialog.show();
-}
 
 })();
 

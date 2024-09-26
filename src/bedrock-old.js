@@ -284,7 +284,7 @@ function parseGeometry(data) {
 			}
 			//Changed Code
 			if (b.poly_mesh) {
-				parseMesh(b, group)
+				parseMesh(b.poly_mesh, group)
 			}
 			//End if change
 			if (b.children) {
@@ -323,7 +323,6 @@ function parseGeometry(data) {
 
 	codec.dispatchEvent('parsed', {model: data.object});
 
-	loadTextureDraggable()
 	Canvas.updateAllBones()
 	setProjectTitle()
 	if (isApp && Project.geometry_name && Project.BedrockEntityManager) {

@@ -4,12 +4,12 @@
 //#region Save Functions
 /**
  * Converts a mesh to a polymesh.
- * @param {Object} poly_mesh The polymesh to save to. If not defined, a new polymesh will be created.
+ * @param {Object} polyMesh The polymesh to save to. If not defined, a new polymesh will be created.
  * @param {Mesh} mesh The mesh to save.
  * @returns {Object} The polymesh with the mesh saved to it.
  */
-function compileMesh(poly_mesh, mesh) {
-    poly_mesh ??= 
+function compileMesh(polyMesh, mesh) {
+    polyMesh ??= 
     {
         meta: settings["meta_data"].value ? 
         {
@@ -43,15 +43,15 @@ function compileMesh(poly_mesh, mesh) {
     }
 
     for (let [key, pos] of getVertices(mesh)) {
-        postionMap.set(key, poly_mesh.positions.length);
-        poly_mesh.positions.push(pos);
+        postionMap.set(key, polyMesh.positions.length);
+        polyMesh.positions.push(pos);
 
         const normal = getVertexNormal(mesh, key, vertexFacesMap);
 
         if (!normals.has(normal)) {
-            normalMap.set(key, poly_mesh.normals.length);
-            normals.set(normal, poly_mesh.normals.length);
-            poly_mesh.normals.push(normal);
+            normalMap.set(key, polyMesh.normals.length);
+            normals.set(normal, polyMesh.normals.length);
+            polyMesh.normals.push(normal);
         }
         else normalMap.set(key, normals.get(normal))
     }
@@ -62,8 +62,8 @@ function compileMesh(poly_mesh, mesh) {
             const [u, v] = face.uv[vertexKey];
             const uv = uvsOnSave([u, v]);
             const uIndex = uvMap.get(uv.toString()) ?? (() => {
-                const index = poly_mesh.uvs.length;
-                poly_mesh.uvs.push(uv);
+                const index = polyMesh.uvs.length;
+                polyMesh.uvs.push(uv);
                 uvMap.set(uv.toString(), index);
                 return index;
             })();
@@ -84,23 +84,23 @@ function compileMesh(poly_mesh, mesh) {
             position: mesh.position,
             origin: mesh.origin,
             rotation: mesh.rotation,
-            start: poly_mesh.polys.length,
+            start: polyMesh.polys.length,
             length: polys.length
         }
-        poly_mesh.meta.meshes.push(mesh_meta);
+        polyMesh.meta.meshes.push(mesh_meta);
     }
     //Spread opertator fails here due to an Range Error with a super high face count ( ~200k )
     //+ is faster for super large meshs
-    for (let poly of polys) poly_mesh.polys.push(poly);
-    return poly_mesh;
+    for (let poly of polys) polyMesh.polys.push(poly);
+    return polyMesh;
 }
+
+
 function uvsOnSave(uvs) { 
     uvs[1] = Project.texture_height - uvs[1] //Invert y axis
     if (!settings["normalized_uvs"].value) return uvs
     uvs[0] /= Project.texture_width
     uvs[1] /= Project.texture_height
-    Math.clamp(uvs[0], 0, 1)
-    Math.clamp(uvs[1], 0, 1)
     return uvs
 }
 //#endregion
@@ -116,18 +116,18 @@ function getVertices(mesh) {
 	return verts;
 }
 
-function parseMesh(b, group) {
+function parseMesh(polyMesh, group) {
     /**
      * Adds meta data to mesh. This is to recover the original objects after exporting
      * sense only one can be save to a group at a time this also used for saving the rotation and position.
      */
-    if (b.poly_mesh.meta) {
-        for (let meta of b.poly_mesh.meta.meshes) {
-            const mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
+    if (polyMesh.meta) {
+        for (let meta of polyMesh.meta.meshes) {
+            const mesh = new Mesh({name: meta.name, autouv: 0, color: group.color, vertices: []});
             meta.position ??= [0, 0, 0];
             meta.rotation ??= [0, 0, 0];
             meta.origin ??= [0, 0, 0];
-            const polys = b.poly_mesh.polys.slice(meta.start, meta.start + meta.length);
+            const polys = polyMesh.polys.slice(meta.start, meta.start + meta.length);
             for ( let face of polys ) {
                 const unique = new Set();
                 const vertices = []
@@ -139,14 +139,14 @@ function parseMesh(b, group) {
                     unique.add(point.toString());
 
                     //Do the transformations to revert the vertices
-                    const postion = rotatePoint(b.poly_mesh.positions[point[0]].V3_add(meta.position[0], -meta.position[1], -meta.position[2]), meta.origin, multiplyScalar(meta.rotation, -1));
+                    const postion = rotatePoint(polyMesh.positions[point[0]].V3_add(meta.position[0], -meta.position[1], -meta.position[2]), meta.origin, multiplyScalar(meta.rotation, -1));
                     //Save the point to the mesh
                     mesh.vertices[String(point[0])] = postion;
                     vertices.push(String(point[0]));
 
-                    const uv = b.poly_mesh.uvs[point[2]]
+                    const uv = polyMesh.uvs[point[2]]
                     uv[1] = Project.texture_height - uv[1]  //Invert y axis
-                    if (b.poly_mesh.normalized_uvs) { 
+                    if (polyMesh.normalized_uvs) { 
                         uv.V2_multiply(Project.texture_width, Project.texture_height)
                     }
                     uvs[String(point[0])] = uv;
@@ -160,8 +160,8 @@ function parseMesh(b, group) {
         }
     }
     else {
-        const mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
-        for ( let face of b.poly_mesh.polys ) {
+        const mesh = new Mesh({name: "mesh", autouv: 0, color: group.color, vertices: []});
+        for ( let face of polyMesh.polys ) {
             const unique = new Set();
             const vertices = []
             const uvs = {}
@@ -169,12 +169,12 @@ function parseMesh(b, group) {
                 if (unique.has(point.toString())) continue;
                 unique.add(point.toString());
 
-                const postion = b.poly_mesh.positions[point[0]]
+                const postion = polyMesh.positions[point[0]]
                 mesh.vertices[String(point[0])] = postion;
                 vertices.push(String(point[0]));
-                const uv = b.poly_mesh.uvs[point[2]]
+                const uv = polyMesh.uvs[point[2]]
                 uv[1] = Project.texture_height - uv[1]  //Invert y axis
-                if (b.poly_mesh.normalized_uvs) { 
+                if (polyMesh.normalized_uvs) { 
                     uv.V2_multiply(Project.texture_width, Project.texture_height)
                 }
                 uvs[String(point[0])] = uv;

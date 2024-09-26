@@ -235,7 +235,7 @@ function parseBone(b, bones, parent_list) {
 
     //Change
     if (b.poly_mesh) {
-        parseMesh(b, group)
+        parseMesh(b.poly_mesh, group)
     }
     //End Change
     var parent_group = 'root';
