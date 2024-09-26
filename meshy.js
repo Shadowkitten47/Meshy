@@ -1,52 +1,5 @@
 //This is a bundle of JS files
-if (!global.pluginId) global.pluginId = "meshy";
 
-Plugin.register(pluginId, {
-	title: 'Meshy',
-	author: 'Shadowkitten47',
-	icon: 'diamond',
-	description: 'Loads meshy',
-	version: '1.0.0',
-	variant: 'both',
-    onload() {
-        console.log("Meshy loaded")
-        const bedrock_old = Formats['bedrock_old']
-        const bedrock = Formats['bedrock']
-        bedrock.meshes = true;
-        bedrock_old.meshes = true;
-    },
-    onunload() {
-        const bedrock_old = Formats['bedrock_old']
-        const bedrock = Formats['bedrock']
-        bedrock.meshes = false;
-        bedrock_old.meshes = false;
-    }
-});
-
-//#region Settings
-if (!settings["normalized_uvs"])
-    new Setting("normalized_uvs", {
-        name: "Normalize UVs",
-        description: "Normalize uvs on export",
-        value: true,
-        plugin: pluginId
-    })
-if (!settings["meta_data"])
-    new Setting("meta_data", {
-        name: "Meta Data",
-        description: "Add meta data to mesh. This is used to recover the original mesh in block bench if false all mesh objects are merged into one. Will make file size smaller",
-        value: true,
-        plugin: pluginId
-    })
-if (!settings["skip_normals"]) {
-    new Setting("skip_normals", {
-        name: "Skip Normals",
-        description: "Model will lack all shading information",
-        value: false,
-        plugin: pluginId
-    })
-}
-//#endregion
 
 //Code that happens on import
 //#region Save Functions
@@ -54,8 +7,6 @@ if (!settings["skip_normals"]) {
 //Input of poly_mesh will either be undefined or the result of mesh_to_polymesh()
 //Making a single poly_mesh per bone
 function mesh_to_polymesh(poly_mesh, mesh) {
-    console.time('mesh_to_polymesh');
-
     poly_mesh ??= 
     {
         meta: settings["meta_data"].value ? 
@@ -69,14 +20,16 @@ function mesh_to_polymesh(poly_mesh, mesh) {
         polys: []
     };
 
-	const vKeyTopIndex = new Map();
-    const vKeyTonIndex = new Map();
-    const normals = new Map();
-
-    //Apply rotaion and translation and return without changing original object
+    //vertex keys -> value
+	const postionMap = new Map();
+    const normalMap = new Map();
+    const uvMap = new Map();
     const vertexFacesMap = new Map();
 
-    // Iterate through faces once 
+    //normal arr -> value
+    const normals = new Map();
+
+    //Make a map of faces a vertex is appart of 
     for (let faceKey in mesh.faces) {
         let face = mesh.faces[faceKey];
         for (let vertexKey of face.vertices) {
@@ -86,21 +39,22 @@ function mesh_to_polymesh(poly_mesh, mesh) {
             vertexFacesMap.get(vertexKey).push(faceKey);
         }
     }
+
     for (let [key, pos] of getVertices(mesh)) {
-        vKeyTopIndex.set(key, poly_mesh.positions.length);
+        postionMap.set(key, poly_mesh.positions.length);
         poly_mesh.positions.push(pos);
 
         const normal = getVertexNormal(mesh, key, vertexFacesMap);
 
         if (!normals.has(normal)) {
-            vKeyTonIndex.set(key, poly_mesh.normals.length);
+            normalMap.set(key, poly_mesh.normals.length);
             normals.set(normal, poly_mesh.normals.length);
             poly_mesh.normals.push(normal);
         }
-        else vKeyTonIndex.set(key, normals.get(normal))
+        else normalMap.set(key, normals.get(normal))
     }
 
-	const uvMap = new Map();
+	
     let polys = Object.values(mesh.faces).map((face) => {
         const poly = face.getSortedVertices().map((vertexKey) => {
             const [u, v] = face.uv[vertexKey];
@@ -112,7 +66,7 @@ function mesh_to_polymesh(poly_mesh, mesh) {
                 return index;
             })();
 
-            return [vKeyTopIndex.get(vertexKey), vKeyTonIndex.get(vertexKey), uIndex];
+            return [postionMap.get(vertexKey), normalMap.get(vertexKey), uIndex];
         });
         if (poly.length < 4) poly.push(poly[2]);
         return poly;
@@ -125,6 +79,7 @@ function mesh_to_polymesh(poly_mesh, mesh) {
         const mesh_meta = {
             name: mesh.name,
             //No postion only origin
+            position: mesh.position,
             origin: mesh.origin,
             rotation: mesh.rotation,
             start: poly_mesh.polys.length,
@@ -135,7 +90,6 @@ function mesh_to_polymesh(poly_mesh, mesh) {
     //Spread opertator fails here due to an Range Error with a super high face count ( ~200k )
     //+ is faster for super large meshs
     for (let poly of polys) poly_mesh.polys.push(poly);
-    console.timeEnd('mesh_to_polymesh');
     return poly_mesh;
 }
 function uvsOnSave(uvs) { 
@@ -143,8 +97,8 @@ function uvsOnSave(uvs) {
     if (!settings["normalized_uvs"].value) return uvs
     uvs[0] /= Project.texture_width
     uvs[1] /= Project.texture_height
-    clamp(uvs[0], 0, 1)
-    clamp(uvs[1], 0, 1)
+    Math.clamp(uvs[0], 0, 1)
+    Math.clamp(uvs[1], 0, 1)
     return uvs
 }
 //#endregion
@@ -154,78 +108,85 @@ function uvsOnSave(uvs) {
 function getVertices(mesh) {
 	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
 		point = rotatePoint(point, mesh.origin, mesh.rotation)
-        point = translatePoint(point, mesh.position)
+        Array.prototype.V3_add
+        point.V3_add(-mesh.position[0], mesh.position[1], mesh.position[2])
 		return [ key, point ]
 	}) 
 	return verts;
 }
 
 function polymesh_to_mesh(b, group) {
+    /**
+     * Adds meta data to mesh. This is to recover the original objects after exporting
+     * sense only one can be save to a group at a time this also used for saving the rotation and position.
+     */
     if (b.poly_mesh.meta) {
-        for (let mesh of b.poly_mesh.meta.meshes) {
-            const base_mesh = new Mesh({name: mesh.name, autouv: 0, color: group.color, vertices: []});
-            //base_mesh.normals = {}
-            const polys = b.poly_mesh.polys.slice(mesh.start, mesh.start + mesh.length);
-            const org = multiplyScalar(mesh.origin, -1);
-            const rot = multiplyScalar(mesh.rotation, -1);
+        for (let meta of b.poly_mesh.meta.meshes) {
+            const mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
+            meta.position ??= [0, 0, 0];
+            meta.rotation ??= [0, 0, 0];
+            meta.origin ??= [0, 0, 0];
+            const polys = b.poly_mesh.polys.slice(meta.start, meta.start + meta.length);
             for ( let face of polys ) {
-                const unique = [];
-                for (let i = 0; i < face.length; i++) {
-                    if (unique.indexOfArray(face[i]) === -1) {
-                        unique.push(face[i]);
-                    }
-                }
-                face = unique;
+                const unique = new Set();
                 const vertices = []
-                const uv = {}
-                for (let vertex of face ) {
-                    //Moves points back to original position refer to getVertices
-                    const point = rotatePoint( translatePoint(b.poly_mesh.positions[vertex[0]], org), mesh.origin, rot)
-                    //base_mesh.normals[`v${vertex[0]}`] = b.poly_mesh.normals[vertex[1]];
-                    base_mesh.vertices[`v${vertex[0]}`] = point;
-                    vertices.push(`v${vertex[0]}`)
-                    const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
-                    const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : Project.texture_height - b.poly_mesh.uvs[vertex[2]][1] );
+                const uvs = {}
+                for (let point of face ) {
 
-                    uv[`v${vertex[0]}`] = [ uv1, uv2 ];
+                    //Make sure we don't add the same vertex twice ( This means that a quad was folded in half )
+                    if (unique.has(point.toString())) continue;
+                    unique.add(point.toString());
+
+                    //Do the transformations to revert the vertices
+                    const postion = rotatePoint(b.poly_mesh.positions[point[0]].V3_add(meta.position[0], -meta.position[1], -meta.position[2]), meta.origin, multiplyScalar(meta.rotation, -1));
+                    //Save the point to the mesh
+                    mesh.vertices[String(point[0])] = postion;
+                    vertices.push(String(point[0]));
+
+                    const uv = b.poly_mesh.uvs[point[2]]
+                    uv[1] = Project.texture_height - uv[1]  //Invert y axis
+                    if (b.poly_mesh.normalized_uvs) { 
+                        uv.V2_multiply(Project.texture_width, Project.texture_height)
+                    }
+                    uvs[String(point[0])] = uv;
+
                 }
-                base_mesh.addFaces(new MeshFace(base_mesh, { vertices, uv }));
+                mesh.addFaces(new MeshFace(mesh, { vertices, uvs }));
             }
-            base_mesh.origin = mesh.origin;
-            base_mesh.rotation = mesh.rotation;            
-            base_mesh.addTo(group).init();
+            mesh.origin = meta.origin;
+            mesh.rotation = meta.rotation;            
+            mesh.addTo(group).init();
         }
     }
     else {
-        const base_mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
+        const mesh = new Mesh({name: b.name, autouv: 0, color: group.color, vertices: []});
         for ( let face of b.poly_mesh.polys ) {
-            const unique = [];
-            for (let i = 0; i < face.length; i++) {
-                if (indexFindArr(unique, face[i]) === -1) {
-                    unique.push(face[i]);
-                }
-            }
-            face = unique;
+            const unique = new Set();
             const vertices = []
-            const uv = {}
-            for (let vertex of face ) {
-                base_mesh.vertices[`v${vertex[0]}`] = b.poly_mesh.positions[vertex[0]];
-                vertices.push(`v${vertex[0]}`)
-                base_mesh.vNormals[`v${vertex[0]}`] = b.poly_mesh.normals[vertex[1]];
-                const uv1 = ( b.poly_mesh.normalized_uvs ? b.poly_mesh.uvs[vertex[2]][0] * Project.texture_width : b.poly_mesh.uvs[vertex[2]][0] );
-                const uv2 = ( b.poly_mesh.normalized_uvs ? Project.texture_height - (b.poly_mesh.uvs[vertex[2]][1] * Project.texture_height) : b.poly_mesh.uvs[vertex[2]][1] );
-                uv[`v${vertex[0]}`] = [ uv1, uv2 ];
+            const uvs = {}
+            for (let point of face ) {
+                if (unique.has(point.toString())) continue;
+                unique.add(point.toString());
+
+                const postion = b.poly_mesh.positions[point[0]]
+                mesh.vertices[String(point[0])] = postion;
+                vertices.push(String(point[0]));
+                const uv = b.poly_mesh.uvs[point[2]]
+                uv[1] = Project.texture_height - uv[1]  //Invert y axis
+                if (b.poly_mesh.normalized_uvs) { 
+                    uv.V2_multiply(Project.texture_width, Project.texture_height)
+                }
+                uvs[String(point[0])] = uv;
             }
-            base_mesh.addFaces(new MeshFace(base_mesh, { vertices, uv }));
+            mesh.addFaces(new MeshFace(mesh, { vertices, uvs }));
         }
-        base_mesh.addTo(group).init();
+        mesh.addTo(group).init();
     }
 }
 //#endregion
 //#region Helpers
 
 function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
-
     if (settings["skip_normals"].value) return [ 0,1,0 ];
     let normalSum = [0, 0, 0];
     let faceCount = 0;
@@ -254,20 +215,6 @@ function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
 function multiplyScalar(vec, scalar) {
     return vec.map((coord) => coord * scalar);
 }
-Array.prototype.indexOfArray = function (x) {
-    return this.findIndex(arr => 
-        Array.isArray(arr) && 
-        arr.length === arr.length && 
-        arr.every((element, index) => element === x[index])
-    );
-}
-
-function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-  }
-function toRadians(degrees) {
-    return degrees * (Math.PI / 180);
-}
 
 //Minecraft polys_lack and overall pos and rotation
 //So we need to apply them to each vertex on export
@@ -276,7 +223,7 @@ function translatePoint(point, center) {
 }
 function rotatePoint(point, center, rotation) {
     // Convert rotation angles to radians
-    const [rx, ry, rz] = rotation.map(toRadians);
+    const [rx, ry, rz] = rotation.map(Math.degToRad);
 
     // Translate point to origin
     let [x, y, z] = point.map((coord, i) => coord - center[i]);
@@ -305,9 +252,6 @@ function rotatePoint(point, center, rotation) {
 }
 //#endregion
 
-//The following code is from blockbench source code with slight modifications
-//Most code that is unqiue to this project is above
-//And are shared function between bedrock_old and bedrock in witch no major changes are made
 
 //#region Source Files
 
@@ -1090,6 +1034,7 @@ function compileCube(cube, bone) {
     }
     return template;
 }
+let counter = 0;
 function compileGroup(g) {
 
     if (g.type !== 'group' || g.export == false) return;
@@ -1124,8 +1069,6 @@ function compileGroup(g) {
     var locators = {};
     var texture_meshes = [];
     var poly_mesh = null;
-    let c = 0;
-    const start = performance.now();
     for (var obj of g.children) {
         if (obj.export) {
             if (obj instanceof Cube) {
@@ -1184,7 +1127,7 @@ function compileGroup(g) {
         }
         
     }
-    const end = performance.now();
+
     if (cubes.length) {
         bone.cubes = cubes
     }
@@ -1196,9 +1139,6 @@ function compileGroup(g) {
     }
     if (poly_mesh !== null) {
         bone.poly_mesh = poly_mesh
-        console.log(`Compiled in ${end - start}ms`);
-        console.log(poly_mesh.positions.length || 0)
-        console.log((end - start) / poly_mesh.positions.length || 0 )
     }
     return bone;
 }
@@ -1355,6 +1295,70 @@ BarItems['import_obj'].click = function () {
     }
     import_obj_dialog.show();
 }
+
+})();
+
+
+
+// File: main.js
+(function() {
+const pluginId = "meshy";
+
+Plugin.register(pluginId, {
+	title: 'Meshy',
+	author: 'Shadowkitten47',
+	icon: 'diamond',
+	description: 'Loads meshy',
+	version: '1.0.0',
+	variant: 'both',
+    onload() {
+        const bedrock_old = Formats['bedrock_old']
+        const bedrock = Formats['bedrock']
+        bedrock.meshes = true;
+        bedrock_old.meshes = true;
+    },
+    onunload() {
+        const bedrock_old = Formats['bedrock_old']
+        const bedrock = Formats['bedrock']
+        bedrock.meshes = false;
+        bedrock_old.meshes = false;
+    }
+});
+
+
+if (!settings["normalized_uvs"])
+    new Setting("normalized_uvs", {
+        name: "Normalize UVs",
+        description: "Normalize uvs on export",
+        value: true,
+        plugin: pluginId
+    })
+if (!settings["meta_data"])
+    new Setting("meta_data", {
+        name: "Meta Data",
+        description: "Adds meta data to mesh. ( For smaller file size disable this )",
+        value: true,
+        plugin: pluginId
+    })
+if (!settings["skip_normals"]) {
+    new Setting("skip_normals", {
+        name: "Skip Normals",
+        description: "Model will lack all shading information",
+        value: false,
+        plugin: pluginId
+    })
+}
+if (!settings["Force Multi-Textures"])
+    new Setting("force_textures", {
+        name: "Force Multi-Textures",
+        description: "Forces all current Format to use multiple textures",
+        value: !Project?.format?.single_texture ?? false,
+        plugin: pluginId,
+        onChange: (value) => {
+            if (Project)
+                Project.format.single_texture = !value
+        }
+    })
 
 })();
 

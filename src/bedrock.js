@@ -1,8 +1,23 @@
 var codec = Codecs["bedrock"]
- 
-//ON LOAD
+codec.compile = compile;
+codec.parse = parse;
 
-codec.parse = function parse(data, path) {
+/*
+    master/js/io/formats/bedrock.js
+    function codec.parse
+    function codec.compile
+    
+    function parseGeometry
+    function parseBone
+    function parseCube
+
+    function compileGroup
+    function compileCube
+    function getFormatVersion
+*/
+
+//#region parse
+function parse(data, path) {
     if (Format != Formats.bedrock && Format != Formats.bedrock_block) Formats.bedrock.select()
 
     let geometries = [];
@@ -21,7 +36,6 @@ codec.parse = function parse(data, path) {
 
     geometries.forEach(geo => {
         geo.uuid = guid();
-
         geo.bonecount = 0;
         geo.cubecount = 0;
         if (geo.object.bones instanceof Array) {
@@ -132,7 +146,7 @@ function parseGeometry(data) {
 
     codec.dispatchEvent('parsed', {model: data.object});
 
-    loadTextureDraggable()
+    
     Canvas.updateAllBones()
     setProjectTitle()
     if (isApp && Project.geometry_name) {
@@ -142,6 +156,7 @@ function parseGeometry(data) {
     Validator.validate()
     updateSelection()
 }
+
 function parseBone(b, bones, parent_list) {
     var group = new Group({
         name: b.name,
@@ -220,7 +235,7 @@ function parseBone(b, bones, parent_list) {
 
     //Change
     if (b.poly_mesh) {
-        polymesh_to_mesh(b, group)
+        parseMesh(b, group)
     }
     //End Change
     var parent_group = 'root';
@@ -306,10 +321,11 @@ function parseCube(s, group) {
     base_cube.addTo(group).init();
     return base_cube;
 }
+//#endregion
 
 
-//ON SAvE
-codec.compile = function compile(options) {
+//#region compile
+function compile(options) {
     if (options === undefined) options = {}
 
     var entitymodel = {}
@@ -466,15 +482,13 @@ function compileGroup(g) {
     var locators = {};
     var texture_meshes = [];
     var poly_mesh = null;
-    let c = 0;
-    const start = performance.now();
     for (var obj of g.children) {
         if (obj.export) {
             if (obj instanceof Cube) {
                 let template = compileCube(obj, bone);
                 cubes.push(template);
             } else if (obj instanceof Mesh ) {
-                poly_mesh = mesh_to_polymesh(poly_mesh, obj);
+                poly_mesh = compileMesh(poly_mesh, obj);
             } else if (obj instanceof Locator || obj instanceof NullObject) {
                 let key = obj.name;
                 if (obj instanceof NullObject) key = '_null_' + key;
@@ -526,7 +540,7 @@ function compileGroup(g) {
         }
         
     }
-    const end = performance.now();
+
     if (cubes.length) {
         bone.cubes = cubes
     }
@@ -538,11 +552,8 @@ function compileGroup(g) {
     }
     if (poly_mesh !== null) {
         bone.poly_mesh = poly_mesh
-        console.log(`Compiled in ${end - start}ms`);
-        console.log(poly_mesh.positions.length || 0)
-        console.log((end - start) / poly_mesh.positions.length || 0 )
     }
     return bone;
 }
-
+//#endregion
 

@@ -1,6 +1,209 @@
 var codec = Codecs["bedrock_old"]
- 
-//Mostly the same
+codec.parse = parse;
+codec.compile = compile;
+
+/*
+	master/js/io/formats/bedrock_old.js
+	function codec.parse
+	function codec.compile
+
+	function parseGeometry
+*/
+
+function parse (data, path) {
+	let geometries = [];
+	for (let key in data) {
+		if (typeof data[key] !== 'object') continue;
+		geometries.push({
+			name: key,
+			object: data[key]
+		});
+	}
+	if (geometries.length === 1) {
+		parseGeometry(geometries[0]);
+		return;
+	} else if (isApp && BedrockEntityManager.CurrentContext?.geometry) {
+		return parseGeometry(geometries.find(geo => geo.name == BedrockEntityManager.CurrentContext.geometry));
+	}
+
+	geometries.forEach(geo => {
+		geo.uuid = guid();
+
+		geo.bonecount = 0;
+		geo.cubecount = 0;
+		if (geo.object.bones instanceof Array) {
+			geo.object.bones.forEach(bone => {
+				geo.bonecount++;
+				if (bone.cubes instanceof Array) geo.cubecount += bone.cubes.length;
+			})
+		}
+	})
+
+	let selected = null;
+	new Dialog({
+		id: 'bedrock_model_select',
+		title: 'dialog.select_model.title',
+		buttons: ['Import', 'dialog.cancel'],
+		component: {
+			data() {return {
+				search_term: '',
+				geometries,
+				selected: null,
+			}},
+			computed: {
+				filtered_geometries() {
+					if (!this.search_term) return this.geometries;
+					let term = this.search_term.toLowerCase();
+					return this.geometries.filter(geo => {
+						return geo.name.toLowerCase().includes(term)
+					})
+				}
+			},
+			methods: {
+				selectGeometry(geo) {
+					this.selected = selected = geo;
+				},
+				open(geo) {
+					Dialog.open.hide();
+					parseGeometry(geo);
+				},
+				tl
+			},
+			template: `
+				<div>
+					<search-bar v-model="search_term"></search-bar>
+					<ul class="list" id="model_select_list">
+						<li v-for="geometry in filtered_geometries" :key="geometry.uuid" :class="{selected: geometry == selected}" @click="selectGeometry(geometry)" @dblclick="open(geometry)">
+							<p>{{ geometry.name }}</p>
+							<label>{{ geometry.bonecount+' ${tl('dialog.select_model.bones')}' }}, {{ geometry.cubecount+' ${tl('dialog.select_model.cubes')}' }}</label>
+						</li>
+					</ul>
+				</div>
+			`
+		},
+		onConfirm() {
+			parseGeometry(selected);
+		}
+	}).show();
+}
+
+function compile(options) {
+	if (options === undefined) options = {}
+	var entitymodel = {}
+	entitymodel.texturewidth = Project.texture_width;
+	entitymodel.textureheight = Project.texture_height;
+	var bones = []
+	var visible_box = new THREE.Box3()
+
+	var groups = getAllGroups();
+	var loose_elements = [];
+	Outliner.root.forEach(obj => {
+		if (obj.type === 'cube' || obj.type == 'locator') {
+			loose_elements.push(obj)
+		}
+	})
+	if (loose_elements.length) {
+		let group = new Group({
+			name: 'bb_main'
+		});
+		group.children.push(...loose_elements);
+		group.is_catch_bone = true;
+		group.createUniqueName();
+		groups.splice(0, 0, group);
+	}
+
+	groups.forEach(function(g) {
+		if (g.type !== 'group' || g.export == false) return;
+		if (!settings.export_empty_groups.value && !g.children.find(child => child.export)) return;
+		//Bone
+		var bone = {}
+		bone.name = g.name
+		if (g.parent.type === 'group') {
+			bone.parent = g.parent.name
+		}
+		bone.pivot = g.origin.slice()
+		bone.pivot[0] *= -1
+		if (!g.rotation.allEqual(0)) {
+			bone.rotation = [
+				-g.rotation[0],
+				-g.rotation[1],
+				g.rotation[2]
+			]
+		}
+		if (g.reset) bone.reset = true;
+		if (g.mirror_uv && Project.box_uv) bone.mirror = true;
+		if (g.material) bone.material = g.material;
+
+		//Elements
+		var cubes = []
+		var locators = {};
+		var poly_mesh = null;
+
+		for (var obj of g.children) {
+			if (obj.export) {
+				if (obj instanceof Cube) {
+					var template = new oneLiner()
+					template.origin = obj.from.slice()
+					template.size = obj.size()
+					template.origin[0] = -(template.origin[0] + template.size[0])
+					template.uv = obj.uv_offset
+					if (obj.inflate && typeof obj.inflate === 'number') {
+						template.inflate = obj.inflate
+					}
+					if (obj.mirror_uv === !bone.mirror) {
+						template.mirror = obj.mirror_uv
+					}
+					//Visible Bounds
+					var mesh = obj.mesh
+					if (mesh) {
+						visible_box.expandByObject(mesh)
+					}
+					cubes.push(template)
+
+				} else if (obj instanceof Locator) {
+
+					locators[obj.name] = obj.position.slice();
+					locators[obj.name][0] *= -1;
+				} else if (obj instanceof Mesh ) {
+					poly_mesh = compileMesh(poly_mesh, obj);
+				}
+			}
+		}
+		if (cubes.length) {
+			bone.cubes = cubes
+		}
+		if (Object.keys(locators).length) {
+			bone.locators = locators
+		}
+		if (poly_mesh !== null) {
+			bone.poly_mesh = poly_mesh
+		}
+		bones.push(bone)
+	})
+
+	if (bones.length && options.visible_box !== false) {
+
+		let visible_box = calculateVisibleBox();
+		entitymodel.visible_bounds_width = visible_box[0] || 0;
+		entitymodel.visible_bounds_height = visible_box[1] || 0;
+		entitymodel.visible_bounds_offset = [0, visible_box[2] || 0, 0]
+	}
+	if (bones.length) {
+		entitymodel.bones = bones
+	}
+	this.dispatchEvent('compile', {model: entitymodel, options});
+
+	if (options.raw) {
+		return entitymodel
+	} else {
+		var model_name = 'geometry.' + (Project.geometry_name||Project.name||'unknown')
+		return autoStringify({
+			format_version: '1.10.0',
+			[model_name]: entitymodel
+		})
+	}
+}
+
 function parseGeometry(data) {
 	let geometry_name = data.name.replace(/^geometry\./, '');
 
@@ -81,7 +284,7 @@ function parseGeometry(data) {
 			}
 			//Changed Code
 			if (b.poly_mesh) {
-				polymesh_to_mesh(b, group)
+				parseMesh(b, group)
 			}
 			//End if change
 			if (b.children) {
@@ -129,204 +332,6 @@ function parseGeometry(data) {
 	Validator.validate()
 	updateSelection()
 }
-
-
-
-//Same as source just need to change parseGeometry 
-codec.parse = function (data, path) {
-	let geometries = [];
-	for (let key in data) {
-		if (typeof data[key] !== 'object') continue;
-		geometries.push({
-			name: key,
-			object: data[key]
-		});
-	}
-	if (geometries.length === 1) {
-		parseGeometry(geometries[0]);
-		return;
-	} else if (isApp && BedrockEntityManager.CurrentContext?.geometry) {
-		return parseGeometry(geometries.find(geo => geo.name == BedrockEntityManager.CurrentContext.geometry));
-	}
-
-	geometries.forEach(geo => {
-		geo.uuid = guid();
-
-		geo.bonecount = 0;
-		geo.cubecount = 0;
-		if (geo.object.bones instanceof Array) {
-			geo.object.bones.forEach(bone => {
-				geo.bonecount++;
-				if (bone.cubes instanceof Array) geo.cubecount += bone.cubes.length;
-			})
-		}
-	})
-
-	let selected = null;
-	new Dialog({
-		id: 'bedrock_model_select',
-		title: 'dialog.select_model.title',
-		buttons: ['Import', 'dialog.cancel'],
-		component: {
-			data() {return {
-				search_term: '',
-				geometries,
-				selected: null,
-			}},
-			computed: {
-				filtered_geometries() {
-					if (!this.search_term) return this.geometries;
-					let term = this.search_term.toLowerCase();
-					return this.geometries.filter(geo => {
-						return geo.name.toLowerCase().includes(term)
-					})
-				}
-			},
-			methods: {
-				selectGeometry(geo) {
-					this.selected = selected = geo;
-				},
-				open(geo) {
-					Dialog.open.hide();
-					parseGeometry(geo);
-				},
-				tl
-			},
-			template: `
-				<div>
-					<search-bar v-model="search_term"></search-bar>
-					<ul class="list" id="model_select_list">
-						<li v-for="geometry in filtered_geometries" :key="geometry.uuid" :class="{selected: geometry == selected}" @click="selectGeometry(geometry)" @dblclick="open(geometry)">
-							<p>{{ geometry.name }}</p>
-							<label>{{ geometry.bonecount+' ${tl('dialog.select_model.bones')}' }}, {{ geometry.cubecount+' ${tl('dialog.select_model.cubes')}' }}</label>
-						</li>
-					</ul>
-				</div>
-			`
-		},
-		onConfirm() {
-			parseGeometry(selected);
-		}
-	}).show();
-}
-
-codec.compile = function compile(options) {
-	if (options === undefined) options = {}
-	var entitymodel = {}
-	entitymodel.texturewidth = Project.texture_width;
-	entitymodel.textureheight = Project.texture_height;
-	var bones = []
-	var visible_box = new THREE.Box3()
-
-	var groups = getAllGroups();
-	var loose_elements = [];
-	Outliner.root.forEach(obj => {
-		if (obj.type === 'cube' || obj.type == 'locator') {
-			loose_elements.push(obj)
-		}
-	})
-	if (loose_elements.length) {
-		let group = new Group({
-			name: 'bb_main'
-		});
-		group.children.push(...loose_elements);
-		group.is_catch_bone = true;
-		group.createUniqueName();
-		groups.splice(0, 0, group);
-	}
-
-	groups.forEach(function(g) {
-		if (g.type !== 'group' || g.export == false) return;
-		if (!settings.export_empty_groups.value && !g.children.find(child => child.export)) return;
-		//Bone
-		var bone = {}
-		bone.name = g.name
-		if (g.parent.type === 'group') {
-			bone.parent = g.parent.name
-		}
-		bone.pivot = g.origin.slice()
-		bone.pivot[0] *= -1
-		if (!g.rotation.allEqual(0)) {
-			bone.rotation = [
-				-g.rotation[0],
-				-g.rotation[1],
-				g.rotation[2]
-			]
-		}
-		if (g.reset) bone.reset = true;
-		if (g.mirror_uv && Project.box_uv) bone.mirror = true;
-		if (g.material) bone.material = g.material;
-
-		//Elements
-		var cubes = []
-		var locators = {};
-		var poly_mesh = null;
-
-		for (var obj of g.children) {
-			if (obj.export) {
-				if (obj instanceof Cube) {
-					var template = new oneLiner()
-					template.origin = obj.from.slice()
-					template.size = obj.size()
-					template.origin[0] = -(template.origin[0] + template.size[0])
-					template.uv = obj.uv_offset
-					if (obj.inflate && typeof obj.inflate === 'number') {
-						template.inflate = obj.inflate
-					}
-					if (obj.mirror_uv === !bone.mirror) {
-						template.mirror = obj.mirror_uv
-					}
-					//Visible Bounds
-					var mesh = obj.mesh
-					if (mesh) {
-						visible_box.expandByObject(mesh)
-					}
-					cubes.push(template)
-
-				} else if (obj instanceof Locator) {
-
-					locators[obj.name] = obj.position.slice();
-					locators[obj.name][0] *= -1;
-				} else if (obj instanceof Mesh ) {
-					poly_mesh = mesh_to_polymesh(poly_mesh, obj);
-				}
-			}
-		}
-		if (cubes.length) {
-			bone.cubes = cubes
-		}
-		if (Object.keys(locators).length) {
-			bone.locators = locators
-		}
-		if (poly_mesh !== null) {
-			bone.poly_mesh = poly_mesh
-		}
-		bones.push(bone)
-	})
-
-	if (bones.length && options.visible_box !== false) {
-
-		let visible_box = calculateVisibleBox();
-		entitymodel.visible_bounds_width = visible_box[0] || 0;
-		entitymodel.visible_bounds_height = visible_box[1] || 0;
-		entitymodel.visible_bounds_offset = [0, visible_box[2] || 0, 0]
-	}
-	if (bones.length) {
-		entitymodel.bones = bones
-	}
-	this.dispatchEvent('compile', {model: entitymodel, options});
-
-	if (options.raw) {
-		return entitymodel
-	} else {
-		var model_name = 'geometry.' + (Project.geometry_name||Project.name||'unknown')
-		return autoStringify({
-			format_version: '1.10.0',
-			[model_name]: entitymodel
-		})
-	}
-}
-
 
 
 
