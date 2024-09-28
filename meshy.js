@@ -112,7 +112,6 @@ function parseMesh(polyMesh, group) {
                     unique.add(point.toString());
 
                     //Do the transformations to revert the vertices
-                    console.warn(meta.rotation, multiplyScalar(meta.rotation, -1))
                     let postion = polyMesh.positions[point[0]]
                     postion = postion.map((x, i) => x - meta.origin[i])
                     postion = rotatePoint(postion, meta.origin, multiplyScalar(meta.rotation, -1))
@@ -249,7 +248,7 @@ function rotatePoint(point, center, rotation) {
     ];
 }
 (function() {
-const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.2-dev-dcaf65c3-117c-4147-af4b-7c7858db1f79"};
+const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.2-dev-d664ec17-059e-493b-ba13-bb6f0a333c0f"};
 
 if (!settings["normalized_uvs"])
     new Setting("normalized_uvs", {
@@ -280,8 +279,6 @@ if (!settings["Force Multi-Textures"])
         value: false,
         plugin: pluginInfo.id,
         onChange: (value) => {
-            console.warn("Force Multi-Textures: " + value)
-            console.warn(Project.format)
             Formats['bedrock'].single_texture = !value
             Formats['bedrock_old'].single_texture = !value
         }

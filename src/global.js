@@ -111,7 +111,6 @@ function parseMesh(polyMesh, group) {
                     unique.add(point.toString());
 
                     //Do the transformations to revert the vertices
-                    console.warn(meta.rotation, multiplyScalar(meta.rotation, -1))
                     let postion = polyMesh.positions[point[0]]
                     postion = postion.map((x, i) => x - meta.origin[i])
                     postion = rotatePoint(postion, meta.origin, multiplyScalar(meta.rotation, -1))

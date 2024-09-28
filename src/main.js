@@ -33,8 +33,6 @@ if (!settings["Force Multi-Textures"])
         value: false,
         plugin: pluginInfo.id,
         onChange: (value) => {
-            console.warn("Force Multi-Textures: " + value)
-            console.warn(Project.format)
             Formats['bedrock'].single_texture = !value
             Formats['bedrock_old'].single_texture = !value
         }
