@@ -49,14 +49,14 @@ function compileMesh(polyMesh, mesh) {
             normals.set(normal.toString(), polyMesh.normals.length);
             polyMesh.normals.push(normal);
         }
-        else normalMap.set(key, normals.get(normal))
+        else normalMap.set(key, normals.get(normal.toString()))
     }
 
 	
     let polys = Object.values(mesh.faces).map((face) => {
         const poly = face.getSortedVertices().map((vertexKey) => {
-            const [u, v] = face.uv[vertexKey];
-            const uv = uvsOnSave([u, v]);
+            const uv = uvOnSave(...face.uv[vertexKey]);
+
             const uIndex = uvMap.get(uv.toString()) ?? (() => {
                 const index = polyMesh.uvs.length;
                 polyMesh.uvs.push(uv);
@@ -112,19 +112,20 @@ function parseMesh(polyMesh, group) {
                     //Do the transformations to revert the vertices
                     const postion = rotatePoint(polyMesh.positions[point[0]].V3_add(meta.position[0], -meta.position[1], -meta.position[2]), meta.origin, multiplyScalar(meta.rotation, -1));
                     //Save the point to the mesh
-                    mesh.vertices[String(point[0])] = postion;
-                    vertices.push(String(point[0]));
-
-                    const uv = polyMesh.uvs[point[2]]
-                    uv[1] = Project.texture_height - uv[1]  //Invert y axis
+                    mesh.vertices[`v${point[0]}`] = postion;
+                    vertices.push(`v${point[0]}`);
+                    mesh.addVertices()
+                    const uv = [...polyMesh.uvs[point[2]]]
                     if (polyMesh.normalized_uvs) { 
                         uv.V2_multiply(Project.texture_width, Project.texture_height)
                     }
-                    uvs[String(point[0])] = uv;
+                    uv[1] = Project.texture_height - uv[1]  //Invert y axis
+                    uvs[`v${point[0]}`] = uv;
 
                 }
-                mesh.addFaces(new MeshFace(mesh, { vertices, uvs }));
+                mesh.addFaces(new MeshFace(mesh, {  uv: uvs, vertices }));
             }
+            console.warn(mesh)
             mesh.origin = meta.origin;
             mesh.rotation = meta.rotation;            
             mesh.addTo(group).init();
@@ -141,14 +142,14 @@ function parseMesh(polyMesh, group) {
                 unique.add(point.toString());
 
                 const postion = polyMesh.positions[point[0]]
-                mesh.vertices[String(point[0])] = postion;
-                vertices.push(String(point[0]));
+                mesh.vertices[`v${point[0]}`] = postion;
+                vertices.push(`v${point[0]}`);
                 const uv = polyMesh.uvs[point[2]]
                 uv[1] = Project.texture_height - uv[1]  //Invert y axis
                 if (polyMesh.normalized_uvs) { 
                     uv.V2_multiply(Project.texture_width, Project.texture_height)
                 }
-                uvs[String(point[0])] = uv;
+                uvs[`v${point[0]}`] = uv;
             }
             mesh.addFaces(new MeshFace(mesh, { vertices, uvs }));
         }
@@ -156,12 +157,12 @@ function parseMesh(polyMesh, group) {
     }
 }
 
-function uvsOnSave(uvs) { 
-    uvs[1] = Project.texture_height - uvs[1] //Invert y axis
-    if (!settings["normalized_uvs"].value) return uvs
-    uvs[0] /= Project.texture_width
-    uvs[1] /= Project.texture_height
-    return uvs
+function uvOnSave(...uv) { 
+    uv[1] = Project.texture_height - uv[1] //Invert y axis
+    if (!settings["normalized_uvs"].value) return uv
+    uv[0] /= Project.texture_width
+    uv[1] /= Project.texture_height
+    return uv
 }
 
 //gets vertices of a Mesh and applys transformations to the points so that they can be exported
