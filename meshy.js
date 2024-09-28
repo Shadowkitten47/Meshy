@@ -1,8 +1,5 @@
 //This is a bundle of JS files
 
-
-
-//#region Save Functions
 /**
  * Converts a mesh to a polymesh.
  * @param {Object} polyMesh The polymesh to save to. If not defined, a new polymesh will be created.
@@ -76,12 +73,8 @@ function compileMesh(polyMesh, mesh) {
     });
 
     if (settings["meta_data"].value) {
-        //Meta Data for mesh to be exported
-        //Minecraft doesn't support multiple meshes under the same group
-        //So we combine all meshes into one mesh the meta data is to recover the original meshes
         const mesh_meta = {
             name: mesh.name,
-            //No postion only origin
             position: mesh.position,
             origin: mesh.origin,
             rotation: mesh.rotation,
@@ -90,31 +83,10 @@ function compileMesh(polyMesh, mesh) {
         }
         polyMesh.meta.meshes.push(mesh_meta);
     }
-    //Spread opertator fails here due to an Range Error with a super high face count ( ~200k )
-    //+ is faster for super large meshs
+
+    //Spread opertator fails here so we loop for each
     for (let poly of polys) polyMesh.polys.push(poly);
     return polyMesh;
-}
-
-
-function uvsOnSave(uvs) { 
-    uvs[1] = Project.texture_height - uvs[1] //Invert y axis
-    if (!settings["normalized_uvs"].value) return uvs
-    uvs[0] /= Project.texture_width
-    uvs[1] /= Project.texture_height
-    return uvs
-}
-//#endregion
-
-//Gets vertices and applys nessary transformations
-//#region Load Functions
-function getVertices(mesh) {
-	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
-		point = rotatePoint(point, mesh.origin, mesh.rotation)
-        point.V3_add(-mesh.position[0], mesh.position[1], mesh.position[2])
-		return [ key, point ]
-	}) 
-	return verts;
 }
 
 function parseMesh(polyMesh, group) {
@@ -186,6 +158,32 @@ function parseMesh(polyMesh, group) {
     }
 }
 
+function uvsOnSave(uvs) { 
+    uvs[1] = Project.texture_height - uvs[1] //Invert y axis
+    if (!settings["normalized_uvs"].value) return uvs
+    uvs[0] /= Project.texture_width
+    uvs[1] /= Project.texture_height
+    return uvs
+}
+
+//gets vertices of a Mesh and applys transformations to the points so that they can be exported
+function getVertices(mesh) {
+	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
+		point = rotatePoint(point, mesh.origin, mesh.rotation)
+        point.V3_add(-mesh.position[0], mesh.position[1], mesh.position[2])
+		return [ key, point ]
+	}) 
+	return verts;
+}
+
+/**
+ * Gets the vertex normal of a mesh
+ * @param {Mesh} mesh The mesh to get the vertex normal from
+ * @param {string} vertexKey The key of the vertex
+ * @param {Map} vertexFacesMap The map of vertex faces
+ * The vertexFacesMap is used to get the faces of the vertex 
+ * This so we don't have to loop through the faces for each vertex
+ */
 function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
     if (settings["skip_normals"].value) return [ 0,1,0 ];
     let normalSum = [0, 0, 0];
@@ -245,6 +243,72 @@ function rotatePoint(point, center, rotation) {
         z + center[2]
     ];
 }
+(function() {
+const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.2-dev-7b376bb7-093b-4dc9-9842-fd77e0423990"};
+
+if (!settings["normalized_uvs"])
+    new Setting("normalized_uvs", {
+        name: "Normalize UVs",
+        description: "Normalize uvs on export",
+        value: true,
+        plugin: pluginInfo.id
+    })
+if (!settings["meta_data"])
+    new Setting("meta_data", {
+        name: "Meta Data",
+        description: "Adds meta data to mesh. ( For smaller file size disable this )",
+        value: true,
+        plugin: pluginInfo.id
+    })
+if (!settings["skip_normals"]) {
+    new Setting("skip_normals", {
+        name: "Skip Normals",
+        description: "Model will lack all shading information",
+        value: false,
+        plugin: pluginInfo.id
+    })
+}
+if (!settings["Force Multi-Textures"])
+    new Setting("force_textures", {
+        name: "Force Multi-Textures",
+        description: "Forces bedrock formats to use Multi-Textures ( You will need to stitch the texture )",
+        value: false,
+        plugin: pluginInfo.id,
+        onChange: (value) => {
+            console.warn("Force Multi-Textures: " + value)
+            console.warn(Project.format)
+            Formats['bedrock'].single_texture = !value
+            Formats['bedrock_old'].single_texture = !value
+        }
+})
+
+Plugin.register(pluginInfo.id, {
+	title: pluginInfo.name,
+	author: 'Shadowkitten47',
+	icon: 'diamond',
+	description: 'Loads meshy',
+	version: pluginInfo.version,
+	variant: 'both',
+    repository: 'https://github.com/Shadowkitten47/Meshy',
+    onload() {
+        const bedrock_old = Formats['bedrock_old']
+        const bedrock = Formats['bedrock']
+        bedrock.meshes = true;
+        bedrock_old.meshes = true;
+        bedrock.single_texture = !settings["single_texture"]
+        bedrock_old.single_texture = !settings["single_texture"]
+    },
+    onunload() {
+        const bedrock_old = Formats['bedrock_old']
+        const bedrock = Formats['bedrock']
+        bedrock.meshes = false;
+        bedrock_old.meshes = false;
+        bedrock.single_texture = true;
+        bedrock_old.single_texture = true;
+    }
+});
+})();
+
 
 //#region Source Files
 
@@ -1156,70 +1220,6 @@ function compileGroup(g) {
 }
 //#endregion
 
-
-})();
-
-
-
-// File: main.js
-(function() {
-const pluginId = "meshy";
-
-Plugin.register(pluginId, {
-	title: 'Meshy',
-	author: 'Shadowkitten47',
-	icon: 'diamond',
-	description: 'Loads meshy',
-	version: '1.0.0',
-	variant: 'both',
-    onload() {
-        const bedrock_old = Formats['bedrock_old']
-        const bedrock = Formats['bedrock']
-        bedrock.meshes = true;
-        bedrock_old.meshes = true;
-    },
-    onunload() {
-        const bedrock_old = Formats['bedrock_old']
-        const bedrock = Formats['bedrock']
-        bedrock.meshes = false;
-        bedrock_old.meshes = false;
-    }
-});
-
-
-if (!settings["normalized_uvs"])
-    new Setting("normalized_uvs", {
-        name: "Normalize UVs",
-        description: "Normalize uvs on export",
-        value: true,
-        plugin: pluginId
-    })
-if (!settings["meta_data"])
-    new Setting("meta_data", {
-        name: "Meta Data",
-        description: "Adds meta data to mesh. ( For smaller file size disable this )",
-        value: true,
-        plugin: pluginId
-    })
-if (!settings["skip_normals"]) {
-    new Setting("skip_normals", {
-        name: "Skip Normals",
-        description: "Model will lack all shading information",
-        value: false,
-        plugin: pluginId
-    })
-}
-if (!settings["Force Multi-Textures"])
-    new Setting("force_textures", {
-        name: "Force Multi-Textures",
-        description: "Forces all current Format to use multiple textures",
-        value: !Project?.format?.single_texture ?? false,
-        plugin: pluginId,
-        onChange: (value) => {
-            if (Project)
-                Project.format.single_texture = !value
-        }
-    })
 
 })();
 

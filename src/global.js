@@ -1,7 +1,4 @@
 
-
-
-//#region Save Functions
 /**
  * Converts a mesh to a polymesh.
  * @param {Object} polyMesh The polymesh to save to. If not defined, a new polymesh will be created.
@@ -75,12 +72,8 @@ function compileMesh(polyMesh, mesh) {
     });
 
     if (settings["meta_data"].value) {
-        //Meta Data for mesh to be exported
-        //Minecraft doesn't support multiple meshes under the same group
-        //So we combine all meshes into one mesh the meta data is to recover the original meshes
         const mesh_meta = {
             name: mesh.name,
-            //No postion only origin
             position: mesh.position,
             origin: mesh.origin,
             rotation: mesh.rotation,
@@ -89,31 +82,10 @@ function compileMesh(polyMesh, mesh) {
         }
         polyMesh.meta.meshes.push(mesh_meta);
     }
-    //Spread opertator fails here due to an Range Error with a super high face count ( ~200k )
-    //+ is faster for super large meshs
+
+    //Spread opertator fails here so we loop for each
     for (let poly of polys) polyMesh.polys.push(poly);
     return polyMesh;
-}
-
-
-function uvsOnSave(uvs) { 
-    uvs[1] = Project.texture_height - uvs[1] //Invert y axis
-    if (!settings["normalized_uvs"].value) return uvs
-    uvs[0] /= Project.texture_width
-    uvs[1] /= Project.texture_height
-    return uvs
-}
-//#endregion
-
-//Gets vertices and applys nessary transformations
-//#region Load Functions
-function getVertices(mesh) {
-	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
-		point = rotatePoint(point, mesh.origin, mesh.rotation)
-        point.V3_add(-mesh.position[0], mesh.position[1], mesh.position[2])
-		return [ key, point ]
-	}) 
-	return verts;
 }
 
 function parseMesh(polyMesh, group) {
@@ -185,6 +157,32 @@ function parseMesh(polyMesh, group) {
     }
 }
 
+function uvsOnSave(uvs) { 
+    uvs[1] = Project.texture_height - uvs[1] //Invert y axis
+    if (!settings["normalized_uvs"].value) return uvs
+    uvs[0] /= Project.texture_width
+    uvs[1] /= Project.texture_height
+    return uvs
+}
+
+//gets vertices of a Mesh and applys transformations to the points so that they can be exported
+function getVertices(mesh) {
+	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
+		point = rotatePoint(point, mesh.origin, mesh.rotation)
+        point.V3_add(-mesh.position[0], mesh.position[1], mesh.position[2])
+		return [ key, point ]
+	}) 
+	return verts;
+}
+
+/**
+ * Gets the vertex normal of a mesh
+ * @param {Mesh} mesh The mesh to get the vertex normal from
+ * @param {string} vertexKey The key of the vertex
+ * @param {Map} vertexFacesMap The map of vertex faces
+ * The vertexFacesMap is used to get the faces of the vertex 
+ * This so we don't have to loop through the faces for each vertex
+ */
 function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
     if (settings["skip_normals"].value) return [ 0,1,0 ];
     let normalSum = [0, 0, 0];
