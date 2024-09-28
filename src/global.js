@@ -44,10 +44,9 @@ function compileMesh(polyMesh, mesh) {
         polyMesh.positions.push(pos);
 
         const normal = getVertexNormal(mesh, key, vertexFacesMap);
-
-        if (!normals.has(normal)) {
+        if (!normals.has(normal.toString())) {
             normalMap.set(key, polyMesh.normals.length);
-            normals.set(normal, polyMesh.normals.length);
+            normals.set(normal.toString(), polyMesh.normals.length);
             polyMesh.normals.push(normal);
         }
         else normalMap.set(key, normals.get(normal))

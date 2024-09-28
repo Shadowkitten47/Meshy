@@ -45,10 +45,9 @@ function compileMesh(polyMesh, mesh) {
         polyMesh.positions.push(pos);
 
         const normal = getVertexNormal(mesh, key, vertexFacesMap);
-
-        if (!normals.has(normal)) {
+        if (!normals.has(normal.toString())) {
             normalMap.set(key, polyMesh.normals.length);
-            normals.set(normal, polyMesh.normals.length);
+            normals.set(normal.toString(), polyMesh.normals.length);
             polyMesh.normals.push(normal);
         }
         else normalMap.set(key, normals.get(normal))
@@ -244,7 +243,7 @@ function rotatePoint(point, center, rotation) {
     ];
 }
 (function() {
-const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.2-dev-7b376bb7-093b-4dc9-9842-fd77e0423990"};
+const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.2-dev-60409118-d16b-4b1d-9689-0ae73af9ccb9"};
 
 if (!settings["normalized_uvs"])
     new Setting("normalized_uvs", {
