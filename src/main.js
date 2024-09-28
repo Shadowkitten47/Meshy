@@ -53,8 +53,10 @@ Plugin.register(pluginInfo.id, {
         const bedrock = Formats['bedrock']
         bedrock.meshes = true;
         bedrock_old.meshes = true;
-        bedrock.single_texture = !settings["single_texture"]
-        bedrock_old.single_texture = !settings["single_texture"]
+        bedrock.multiple_per_file = true;
+        bedrock.single_texture = !settings["single_texture"]?.value
+        bedrock_old.single_texture = !settings["single_texture"]?.value
+       
     },
     onunload() {
         const bedrock_old = Formats['bedrock_old']
@@ -65,3 +67,18 @@ Plugin.register(pluginInfo.id, {
         bedrock_old.single_texture = true;
     }
 });
+
+
+if (!BarItems['quick_reload']) {
+    new Action('quick_reload', {
+        icon: 'undo',
+        category: 'file',
+        condition: () => Project.export_path != "",
+        keybind: new Keybind({key: 'r', ctrl: true}),
+        click(e) {
+            Blockbench.read([Project.export_path], {}, (files) => {
+                loadModelFile(files[0])
+            })
+        }
+    })
+}

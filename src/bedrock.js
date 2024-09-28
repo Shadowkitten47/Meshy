@@ -99,15 +99,6 @@ function parseGeometry(data) {
     let {description} = data.object;
     let geometry_name = (description.identifier && description.identifier.replace(/^geometry\./, '')) || '';
 
-    let existing_tab = isApp && ModelProject.all.find(project => (
-        Project !== project && project.export_path == Project.export_path && project.geometry_name == geometry_name
-    ))
-    if (existing_tab) {
-        Project.close().then(() =>  {
-            existing_tab.select();
-        });
-        return;
-    }
 
     codec.dispatchEvent('parse', {model: data.object});
 
