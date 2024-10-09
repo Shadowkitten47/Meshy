@@ -246,3 +246,5 @@ function rotatePoint(point, center, rotation) {
         z + center[2]
     ];
 }
+
+
