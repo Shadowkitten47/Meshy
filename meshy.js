@@ -250,13 +250,14 @@ function rotatePoint(point, center, rotation) {
 
 
 (function() {
-const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.3-dev-157bf16e-1dc8-43bf-bea2-db0cc6d77da4","repository":"https://github.com/Shadowkitten47/Meshy"};
+const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.3","repository":"https://github.com/Shadowkitten47/Meshy"};
 
 const pluginSettings = [
     {
-        id: "normalized_mesh_uvs",
+        id: "meshy_normalized_mesh_uvs",
         name: "Normalize Mesh UVs",
         description: "Normalize UVs of polymeshes",
+        category: 'export',
         value: true,
         plugin: pluginInfo.id
     },
@@ -264,20 +265,24 @@ const pluginSettings = [
         id: "meshy_meta_data",
         name: "Meshy Meta Data",
         description: "Adds meta data to bedrock polymeshes",
+        category: 'export',
         value: true,
         plugin: pluginInfo.id
     },
     {
-        id: "skip_mesh_normals",
+        id: "meshy_skip_mesh_normals",
         name: "Skip Mesh Normals",
         description: "Skips normal claculation on polymeshes",
+        category: 'export',
         value: false,
         plugin: pluginInfo.id
     },
     {
-        id: "force_textures",
+        //Force disable single texture on bedrock formats having more than one texture with meshes is pretty useful
+        id: "meshy_force_textures",
         name: "Force Multi-Textures",
-        description: "Forces bedrock formats to use Multi-Textures ( You will need to stitch the textures )",
+        description: "Forces bedrock formats to use allow more than one texture ( You will need to stitch the textures )",
+        category: 'edit',
         value: false,
         plugin: pluginInfo.id,
         onChange: (value) => {
@@ -302,7 +307,7 @@ Plugin.register(pluginInfo.id, {
         bedrock_old.meshes = true;
         for (let s of pluginSettings) {
             if (!settings[s.id]) {
-                new setting(s.id, s);
+                new Setting(s.id, s);
             }
         }
 
@@ -318,7 +323,7 @@ Plugin.register(pluginInfo.id, {
         bedrock_old.single_texture = true;
         for (let s of pluginSettings) {
             if (settings[s.id]) {
-                settings[s.id].remove();
+                settings[s.id].delete(); 
             }
         }
 
