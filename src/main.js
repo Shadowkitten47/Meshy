@@ -72,8 +72,8 @@ Plugin.register(pluginInfo.id, {
             }
         }
 
-        bedrock.single_texture = !settings["single_texture"]?.value
-        bedrock_old.single_texture = !settings["single_texture"]?.value
+        bedrock.single_texture = !settings["meshy_force_textures"]?.value
+        bedrock_old.single_texture = !settings["meshy_force_textures"]?.value
     },
     onunload() {
         let bedrock_old = Formats['bedrock_old']
