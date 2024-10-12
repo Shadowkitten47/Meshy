@@ -250,7 +250,7 @@ function rotatePoint(point, center, rotation) {
 
 
 (function() {
-const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.3-dev-a9efd29d-12f7-420b-9465-fcca523380db","repository":"https://github.com/Shadowkitten47/Meshy"};
+const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.3-dev-3b1c7080-4d95-47f3-aecc-7b25362dcc38","repository":"https://github.com/Shadowkitten47/Meshy"};
 
 const pluginSettings = [
     {
@@ -293,20 +293,21 @@ const pluginSettings = [
 ]
 
 Plugin.register(pluginInfo.id, {
-	title: pluginInfo.name,
-	author: 'Shadowkitten47',
+	title: pluginInfo.name, //Meshy
+	author: 'Shadowkitten47', 
+    creation_date: "2024-09-28",
 	icon: 'diamond',
 	description: 'Enables the use of a meshes in bedrock formats and to export them to Minecraft Bedrock',
-	version: pluginInfo.version,
-	variant: 'both',
-    creation_date: "2024-09-28",
-    min_version: "4.10.4",
+    variant: 'both',
+    version: pluginInfo.version, //1.0.3
     tags: [
-			"Minecraft: Bedrock Edition",
-			"Entity Models",
-			"Mesh"
-	],
-    repository: pluginInfo.repository,
+        "Minecraft: Bedrock Edition",
+        "Entity Models",
+        "Mesh"
+    ],
+    has_changelog: true,
+    min_version: "4.10.4",
+    repository: pluginInfo.repository, //Link
     onload() {
         let bedrock_old = Formats['bedrock_old']
         let bedrock = Formats['bedrock']
