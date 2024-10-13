@@ -14,7 +14,7 @@ function compileMesh(polyMesh, mesh) {
         {
             meshes: [],
         } : undefined,
-		normalized_uvs: settings["meshy_normalized_mesh_uvs"].value,
+		normalized_uvs: settings["meshy_normalized_uvs"].value,
         positions: [],
 		normals: [],
         uvs: [],
@@ -164,7 +164,7 @@ function parseMesh(polyMesh, group) {
 
 function uvOnSave(...uv) { 
     uv[1] = Project.texture_height - uv[1] //Invert y axis
-    if (!settings["meshy_normalized_mesh_uvs"].value) return uv
+    if (!settings["meshy_normalized_uvs"].value) return uv
     uv[0] /= Project.texture_width
     uv[1] /= Project.texture_height
     return uv
@@ -189,7 +189,7 @@ function getVertices(mesh) {
  * This so we don't have to loop through the faces for each vertex
  */
 function getVertexNormal(mesh, vertexKey, vertexFacesMap) {
-    if (settings["meshy_skip_mesh_normals"].value) return [ 0,1,0 ];
+    if (settings["meshy_skip_normals"].value) return [ 0,1,0 ];
     let normalSum = [0, 0, 0];
     let faceCount = 0;
 
@@ -250,7 +250,7 @@ function rotatePoint(point, center, rotation) {
 
 
 (function() {
-const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.3-dev-4e8d3325-a86a-43c2-9b4f-e46f52281286","repository":"https://github.com/Shadowkitten47/Meshy"};
+const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.3","repository":"https://github.com/Shadowkitten47/Meshy"};
 
 const pluginSettings = [
     {
