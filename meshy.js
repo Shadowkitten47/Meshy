@@ -41,6 +41,7 @@ const pluginSettings = [
 	},
 ];
 
+//Function names for events to remove
 const listOfFunctions = [onParseEvent.name, onCompileEvent.name, onBedrockCompileEvent.name];
 
 Plugin.register(pluginInfo.id, {
@@ -69,7 +70,7 @@ Plugin.register(pluginInfo.id, {
 		bedrock_old.single_texture = !settings['meshy_force_textures']?.value;
 
 		var codec = Codecs['bedrock'];
-		purgeEvents(codec);
+		purgeEvents(codec); //Removes all of events that match the function names used so that duplicates don't occur
 
 		codec.on('parsed', onParseEvent);
 		codec.on('compile', onBedrockCompileEvent);
@@ -143,7 +144,7 @@ function onParseEvent({model}) {
 		}
 	}
 }
-function onBedrockCompileEvent({model, options}) {
+function onBedrockCompileEvent({model, options}) { //Extra step so that it shares the same code needed a name for the purge events tho
 	model = model['minecraft:geometry'][0];
 	onCompileEvent({model, options});
 }
