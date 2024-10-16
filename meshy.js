@@ -276,9 +276,9 @@ function parseMesh(polyMesh, group) {
 
                     //Do the transformations to revert the vertices
                     let postion = polyMesh.positions[point[0]]
+                    postion[0] *= -1;
                     postion = postion.map((x, i) => x - meta.origin[i])
                     postion = rotatePoint(postion, meta.origin, multiplyScalar(meta.rotation, -1))
-
                     //Save the point to the mesh
                     mesh.vertices[`v${point[0]}`] = postion;
                     vertices.push(`v${point[0]}`);
@@ -309,6 +309,7 @@ function parseMesh(polyMesh, group) {
                 unique.add(point.toString());
 
                 const postion = polyMesh.positions[point[0]]
+                postion *= -1;
                 mesh.vertices[`v${point[0]}`] = postion;
                 vertices.push(`v${point[0]}`);
 
@@ -338,6 +339,7 @@ function getVertices(mesh) {
 	const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
 		point = rotatePoint(point, mesh.origin, mesh.rotation)
         point.V3_add(mesh.position[0], mesh.position[1], mesh.position[2])
+        point[0] *= -1;
 		return [ key, point ]
 	}) 
 	return verts;
