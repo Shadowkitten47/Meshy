@@ -80,6 +80,7 @@ Plugin.register(pluginInfo.id, {
 
 		codec.on('parsed', onParseEvent);
 		codec.on('compile', onCompileEvent);
+        //pivot_tool = Toolbars["tools"].children.find((t) => t.id == 'pivot_tool').condition = () => { return false; };
 	},
 	onunload() {
 		let bedrock_old = Formats['bedrock_old'];
@@ -308,8 +309,8 @@ function parseMesh(polyMesh, group) {
                 if (unique.has(point.toString())) continue;
                 unique.add(point.toString());
 
-                const postion = polyMesh.positions[point[0]]
-                postion *= -1;
+                let postion = polyMesh.positions[point[0]]
+                postion[0] *= -1;
                 mesh.vertices[`v${point[0]}`] = postion;
                 vertices.push(`v${point[0]}`);
 
