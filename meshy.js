@@ -1,5 +1,5 @@
 (function() {
-    const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.3-dev-79d455e7-e68a-49e3-88ce-bb9ab0177c25","repository":"https://github.com/Shadowkitten47/Meshy"};
+    const pluginInfo = {"name":"Meshy","id":"meshy","version":"1.0.4","repository":"https://github.com/Shadowkitten47/Meshy"};
     
     const pluginSettings = [
         {
@@ -278,12 +278,10 @@
     
                         //Do the transformations to revert the vertices
                         let postion = polyMesh.positions[point[0]]
-                        console.warn("Meshy", postion)
                         
                         postion = postion.map((x, i) => x - meta.origin[i])
                         postion = rotatePoint(postion, meta.origin, multiplyScalar(meta.rotation, -1))
                         postion[0] /= -1;
-                        console.warn("Meshy", postion)
                         //Save the point to the mesh
                         mesh.vertices[`v${point[0]}`] = postion;
                         vertices.push(`v${point[0]}`);
