@@ -72,14 +72,14 @@
             var codec = Codecs['bedrock'];
             purgeEvents(codec); //Removes all of events that match the function names used so that duplicates don't occur
     
-            codec.on('parsed', onParseEvent);
-            codec.on('compile', onBedrockCompileEvent);
+            codec.on('parsed', meshyOnParseEvent);
+            codec.on('compile', meshyOnBedrockCompileEvent);
     
             codec = Codecs['bedrock_old'];
             purgeEvents(codec);
     
-            codec.on('parsed', onParseEvent);
-            codec.on('compile', onCompileEvent);
+            codec.on('parsed', meshyOnParseEvent);
+            codec.on('compile', meshyOnCompileEvent);
             //pivot_tool = Toolbars["tools"].children.find((t) => t.id == 'pivot_tool').condition = () => { return false; };
         },
         onunload() {
