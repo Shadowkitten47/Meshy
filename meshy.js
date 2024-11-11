@@ -243,7 +243,6 @@
         if (settings["meshy_meta_data"].value) {
             const mesh_meta = {
                 name: mesh.name,
-                position: mesh.position,
                 origin: mesh.origin,
                 rotation: mesh.rotation,
                 start: polyMesh.polys.length,
@@ -265,7 +264,6 @@
         if (polyMesh.meta) {
             for (let meta of polyMesh.meta.meshes) {
                 const mesh = new Mesh({name: meta.name, autouv: 0, color: group.color, vertices: []});
-                meta.position ??= [0, 0, 0];
                 meta.rotation ??= [0, 0, 0];
                 meta.origin ??= [0, 0, 0];
                 
