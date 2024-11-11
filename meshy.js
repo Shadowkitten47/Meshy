@@ -145,9 +145,9 @@
             }
         }
     }
-    function meshyOnBedrockCompileEvent({model, options}) { //Extra step so that it shares the same code needed a name for the purge events tho
+    function meshyOnBedrockCompileEvent({model, options}) { //Extra step for non-legacy bedrock
         model = model['minecraft:geometry'][0];
-        onCompileEvent({model, options});
+        meshyOnCompileEvent({model, options});
     }
     
     //Ensures every function is removed with the names used here. This is so that if duplicates are created it doesn't cause issues
