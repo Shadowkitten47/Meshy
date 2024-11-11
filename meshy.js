@@ -81,6 +81,7 @@
             codec.on('parsed', meshyOnParseEvent);
             codec.on('compile', meshyOnCompileEvent);
             //pivot_tool = Toolbars["tools"].children.find((t) => t.id == 'pivot_tool').condition = () => { return false; };
+
         },
         onunload() {
             let bedrock_old = Formats['bedrock_old'];
@@ -98,6 +99,8 @@
             purgeEvents(codec);
             codec = Codecs['bedrock_old'];
             purgeEvents(codec);
+
+
         },
     });
     
@@ -265,11 +268,16 @@
                 meta.position ??= [0, 0, 0];
                 meta.rotation ??= [0, 0, 0];
                 meta.origin ??= [0, 0, 0];
+                
                 const polys = polyMesh.polys.slice(meta.start, meta.start + meta.length);
                 for ( let face of polys ) {
                     const unique = new Set();
                     const vertices = []
                     const uvs = {}
+
+                    //Low key pissed rn assign origin first
+                    mesh.origin = meta.origin;
+                    mesh.rotation = meta.rotation;
                     for (let point of face ) {
     
                         //Make sure we don't add the same vertex twice ( This means that a quad was folded in half )
@@ -279,7 +287,8 @@
                         //Do the transformations to revert the vertices
                         let postion = polyMesh.positions[point[0]]
                         
-                        postion = postion.map((x, i) => x - meta.origin[i])
+                        postion = postion.map((coord, i) => coord - meta.origin[i]);
+                        console.log(postion)
                         postion = rotatePoint(postion, meta.origin, multiplyScalar(meta.rotation, -1))
                         postion[0] /= -1;
                         //Save the point to the mesh
@@ -296,8 +305,7 @@
                     }
                     mesh.addFaces(new MeshFace(mesh, {  uv: uvs, vertices }));
                 }
-                mesh.origin = meta.origin
-                mesh.rotation = meta.rotation     
+                
                 mesh.addTo(group).init();
             }
         }
@@ -313,6 +321,7 @@
     
                     let postion = polyMesh.positions[point[0]]
                     postion[0] /= -1;
+
                     mesh.vertices[`v${point[0]}`] = postion;
                     vertices.push(`v${point[0]}`);
     
@@ -342,7 +351,7 @@
     function getVertices(mesh) {
         const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
             point = rotatePoint(point, mesh.origin, mesh.rotation)
-            point.V3_add(mesh.position[0], mesh.position[1], mesh.position[2])
+            point.V3_add(mesh.origin[0], mesh.origin[1], mesh.origin[2])
             point[0] *= -1;
             return [ key, point ]
         }) 
