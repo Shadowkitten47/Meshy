@@ -99,7 +99,7 @@
             purgeEvents(codec);
             codec = Codecs['bedrock_old'];
             purgeEvents(codec);
-
+            
 
         },
     });
@@ -156,6 +156,8 @@
     //Ensures every function is removed with the names used here. This is so that if duplicates are created it doesn't cause issues
     //The regular version does not do this
     function purgeEvents(codec) {
+        
+        console.log(codec.events);
         for (let i = 0; i < codec.events['parsed']?.length; i++) {
             if (listOfFunctions.includes(codec.events['parsed'][i].name)) {
                 codec.events['parsed'].splice(i, 1);
@@ -264,9 +266,11 @@
         if (polyMesh.meta) {
             for (let meta of polyMesh.meta.meshes) {
                 const mesh = new Mesh({name: meta.name, autouv: 0, color: group.color, vertices: []});
-                meta.rotation ??= [0, 0, 0];
+
                 meta.origin ??= [0, 0, 0];
-                
+
+                mesh.origin = meta.origin;
+                mesh.rotation = meta.rotation;
                 const polys = polyMesh.polys.slice(meta.start, meta.start + meta.length);
                 for ( let face of polys ) {
                     const unique = new Set();
@@ -274,8 +278,8 @@
                     const uvs = {}
 
                     //Low key pissed rn assign origin first
-                    mesh.origin = meta.origin;
-                    mesh.rotation = meta.rotation;
+                    
+
                     for (let point of face ) {
     
                         //Make sure we don't add the same vertex twice ( This means that a quad was folded in half )
@@ -284,11 +288,12 @@
     
                         //Do the transformations to revert the vertices
                         let postion = polyMesh.positions[point[0]]
-                        
-                        postion = postion.map((coord, i) => coord - meta.origin[i]);
-                        console.log(postion)
-                        postion = rotatePoint(postion, meta.origin, multiplyScalar(meta.rotation, -1))
-                        postion[0] /= -1;
+
+                        let clone = [...postion]
+                        clone[0] *= -1
+                        clone = rotatePoint(clone, mesh.origin, [ mesh.rotation[0] * -1, mesh.rotation[1] * -1, mesh.rotation[2] * -1 ])
+                        clone = clone.V3_add(-mesh.origin[0], -mesh.origin[1], -mesh.origin[2])
+                        postion = clone
                         //Save the point to the mesh
                         mesh.vertices[`v${point[0]}`] = postion;
                         vertices.push(`v${point[0]}`);
@@ -303,7 +308,7 @@
                     }
                     mesh.addFaces(new MeshFace(mesh, {  uv: uvs, vertices }));
                 }
-                
+
                 mesh.addTo(group).init();
             }
         }
@@ -348,9 +353,18 @@
     //gets vertices of a Mesh and applys transformations to the points so that they can be exported
     function getVertices(mesh) {
         const verts = Object.entries(mesh.vertices).map( ( [key, point ]) => {
-            point = rotatePoint(point, mesh.origin, mesh.rotation)
+            const x = [...point]
+
             point.V3_add(mesh.origin[0], mesh.origin[1], mesh.origin[2])
+            point = rotatePoint(point, mesh.origin, mesh.rotation)
             point[0] *= -1;
+
+
+
+
+
+
+
             return [ key, point ]
         }) 
         return verts;
