@@ -180,15 +180,15 @@
     function compileMesh(polyMesh, mesh) {
         polyMesh ??= 
         {
-            meta: settings["meshy_meta_data"].value ? 
-            {
-                meshes: [],
-            } : undefined,
             normalized_uvs: settings["meshy_normalized_mesh_uvs"].value,
             positions: [],
             normals: [],
             uvs: [],
-            polys: []
+            polys: [],
+            meta: settings["meshy_meta_data"].value ? 
+            {
+                meshes: [],
+            } : undefined,
         };
         console.log(mesh)
         //vertex keys -> value
@@ -238,7 +238,10 @@
     
                 return [postionMap.get(vertexKey), normalMap.get(vertexKey), uIndex];
             });
-            if (poly.length < 4) poly.push(poly[2]);
+            poly
+            if (poly.length < 4) 
+                //Fill the poly with the first vertex if less than a quad change: Support for less than 3 vertices
+                return [ ...poly, ...Array(4 - poly.length).fill(poly[0]) ];
             return poly;
         });
     
@@ -258,17 +261,20 @@
         }
     
         //Spread opertator fails here so we loop for each
+
         for (let poly of polys) polyMesh.polys.push(poly);
         return polyMesh;
     }
     
     function parseMesh(polyMesh, group) {
+        console.warn(polyMesh);
         /**
          * Adds meta data to mesh. This is to recover the original objects after exporting
          * sense only one can be save to a group at a time this also used for saving the rotation and position.
          */
         if (polyMesh.meta) {
             for (let meta of polyMesh.meta.meshes) {
+                
                 const mesh = new Mesh({name: meta.name, autouv: 0, color: group.color, vertices: []});
 
                 meta.origin ??= [0, 0, 0];
