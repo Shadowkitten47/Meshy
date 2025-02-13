@@ -330,6 +330,7 @@
                 const vertices = []
                 const uvs = {}
                 for (let point of face ) {
+                    //Remove overlaping point within a face
                     if (unique.has(point.toString())) continue;
                     unique.add(point.toString());
     
