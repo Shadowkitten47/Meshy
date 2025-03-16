@@ -150,14 +150,13 @@
     }
     function meshyOnBedrockCompileEvent({model, options}) { //Extra step for non-legacy bedrock
         model = model['minecraft:geometry'][0];
+        console.warn(model, "Hello");
         meshyOnCompileEvent({model, options});
     }
     
     //Ensures every function is removed with the names used here. This is so that if duplicates are created it doesn't cause issues
     //The regular version does not do this
     function purgeEvents(codec) {
-        
-        console.log(codec.events);
         for (let i = 0; i < codec.events['parsed']?.length; i++) {
             if (listOfFunctions.includes(codec.events['parsed'][i].name)) {
                 codec.events['parsed'].splice(i, 1);
@@ -184,13 +183,8 @@
             positions: [],
             normals: [],
             uvs: [],
-            polys: [],
-            meta: settings["meshy_meta_data"].value ? 
-            {
-                meshes: [],
-            } : undefined,
+            polys: []
         };
-        console.log(mesh)
         //vertex keys -> value
         const postionMap = new Map();
         const normalMap = new Map();
@@ -244,22 +238,42 @@
                 return [ ...poly, ...Array(4 - poly.length).fill(poly[0]) ];
             return poly;
         });
-    
+
+        
+        
+        
+
+
+        //Encode some infomation about the poly mesh within a poly. 
+        //Will only render a point and won't be visable in game, but it still will add to size of the mesh
+        console.warn(settings["meshy_meta_data"].value);
         if (settings["meshy_meta_data"].value) {
-            const mesh_meta = {
-                name: mesh.name,
-                origin: mesh.origin,
-                rotation: [
-                    mesh.rotation[0] * -1,
-                    mesh.rotation[1] * -1,
-                    mesh.rotation[2]
+
+            //Encodes meta data in a form that can't be read by the game but can be read by the editor
+            //Does this by having float values that are trucated to 0 This is so the game dosen't complain about the extra mesh field and not render
+            //Issue: Will and an extra "face" won't be visable but, might have somne performance losses with large meshes
+            const mesh_meta = [
+                //Each of the zero can be replace with a string of the value
+                [
+                    "0." + encodeString(JSON.stringify(mesh.name)), 0, 0
+                ], 
+                [
+                    "0." + encodeString(JSON.stringify( [ mesh.rotation[0] * -1, mesh.rotation[1] * -1, mesh.rotation[2] ])), 0, 0
                 ],
-                start: polyMesh.polys.length,
-                length: polys.length
-            }
-            polyMesh.meta.meshes.push(mesh_meta);
+                [
+                    "0." + encodeString(JSON.stringify(mesh.origin)), 0, 0
+                ],
+			    [
+                    "0." + encodeString(JSON.stringify(polys.length)), 0, 0
+                ]
+                
+            ]
+
+            polyMesh.polys.push(mesh_meta);
+
+   
         }
-    
+        
         //Spread opertator fails here so we loop for each
 
         for (let poly of polys) polyMesh.polys.push(poly);
@@ -267,91 +281,72 @@
     }
     
     function parseMesh(polyMesh, group) {
-        console.warn(polyMesh);
         /**
          * Adds meta data to mesh. This is to recover the original objects after exporting
          * sense only one can be save to a group at a time this also used for saving the rotation and position.
          */
-        if (polyMesh.meta) {
-            for (let meta of polyMesh.meta.meshes) {
-                
-                const mesh = new Mesh({name: meta.name, autouv: 0, color: group.color, vertices: []});
 
-                meta.origin ??= [0, 0, 0];
+        let mesh = new Mesh({name: group.name, autouv: 0, color: group.color, vertices: []});
+        let c = 0;
+        for (let face of polyMesh.polys) {
+            const unique = new Set();
+            const vertices = []
+            const uvs = {}
+            let n = 0;
+            for ( p of face ) {
+                if (unique.has(p.toString())) continue;
+                unique.add(p.toString());
 
-                mesh.origin = meta.origin;
-                mesh.rotation = [
-                    mesh.rotation[0] * -1,
-                    mesh.rotation[1] * -1,
-                    mesh.rotation[2]
-                ];
-                const polys = polyMesh.polys.slice(meta.start, meta.start + meta.length);
-                for ( let face of polys ) {
-                    const unique = new Set();
-                    const vertices = []
-                    const uvs = {}
-
-                    for (let point of face ) {
-    
-                        //Make sure we don't add the same vertex twice ( This means that a quad was folded in half )
-                        if (unique.has(point.toString())) continue;
-                        unique.add(point.toString());
-    
-                        //Do the transformations to revert the vertices
-                        let postion = polyMesh.positions[point[0]]
-
-                        let clone = [...postion]
-                        clone[0] *= -1
-                        clone = rotatePoint(clone, mesh.origin, [ mesh.rotation[0] * -1, mesh.rotation[1] * -1, mesh.rotation[2] * -1 ])
-                        clone = clone.V3_add(-mesh.origin[0], -mesh.origin[1], -mesh.origin[2])
-                        postion = clone
-                        //Save the point to the mesh
-                        mesh.vertices[`v${point[0]}`] = postion;
-                        vertices.push(`v${point[0]}`);
-    
-                        const uv = [...polyMesh.uvs[point[2]]]
-                        if (polyMesh.normalized_uvs) { 
-                            uv.V2_multiply(Project.texture_width, Project.texture_height)
+                //n check so that we don't check repeated values since we know we are in 
+                if ( n <= 0 && typeof p[0] == 'string' && p[0].startsWith("0.") ) {
+                    let name, rotation, origin, size;
+                    try {
+                        name = JSON.parse(decodeString(face[0][0].slice(2)));
+                        console.log(name);
+                        rotation = JSON.parse(decodeString(face[1][0].slice(2)));
+                            rotation[0] *= -1
+                            rotation[1] *= -1
+                        origin = JSON.parse(decodeString(face[2][0].slice(2)));
+                        size = parseInt(decodeString(face[3][0].slice(2)));
+                        n = size;
+                        //Dosen't add the mesh if we are in the first iteration, aka the first meta defined mesh
+                        if ( c > 0 ) {
+                            mesh.addTo(group).init();
                         }
-                        uv[1] = Project.texture_height - uv[1]  //Invert y axis
-                        uvs[`v${point[0]}`] = uv;
-    
-                    }
-                    mesh.addFaces(new MeshFace(mesh, {  uv: uvs, vertices }));
-                }
+                        mesh = new Mesh({name, autouv: 0, color: group.color, vertices: [], origin, rotation });
 
-                mesh.addTo(group).init();
-            }
-        }
-        else {
-            const mesh = new Mesh({name: "mesh", autouv: 0, color: group.color, vertices: []});
-            for ( let face of polyMesh.polys ) {
-                const unique = new Set();
-                const vertices = []
-                const uvs = {}
-                for (let point of face ) {
-                    //Remove overlaping point within a face
-                    if (unique.has(point.toString())) continue;
-                    unique.add(point.toString());
-    
-                    let postion = polyMesh.positions[point[0]]
-                    postion[0] *= -1;
-
-                    mesh.vertices[`v${point[0]}`] = postion;
-                    vertices.push(`v${point[0]}`);
-    
-    
-                    const uv = [...polyMesh.uvs[point[2]]]
-                    if (polyMesh.normalized_uvs) { 
-                        uv.V2_multiply(Project.texture_width, Project.texture_height)
+                    } catch (e) {
+                        console.error(e);
                     }
-                    uv[1] = Project.texture_height - uv[1]  //Invert y axis
-                    uvs[`v${point[0]}`] = uv;
+                    break;
                 }
-                mesh.addFaces(new MeshFace(mesh, { uv: uvs, vertices }));
+                
+                let postion = polyMesh.positions[p[0]]
+
+                let clone = [...postion]
+                clone[0] *= -1
+                clone = rotatePoint(clone, mesh.origin, [ mesh.rotation[0] * -1, mesh.rotation[1] * -1, mesh.rotation[2] * -1 ])
+                clone = clone.V3_add(-mesh.origin[0], -mesh.origin[1], -mesh.origin[2])
+                postion = clone
+                //Save the point to the mesh
+                mesh.vertices[`v${p[0]}`] = postion;
+                vertices.push(`v${p[0]}`);
+                const uv = [...polyMesh.uvs[p[2]]]
+                if (polyMesh.normalized_uvs) { 
+                    uv.V2_multiply(Project.texture_width, Project.texture_height)
+                }
+                uv[1] = Project.texture_height - uv[1]  //Invert y axis
+                uvs[`v${p[0]}`] = uv;
+
+                n--;
+                
             }
-            mesh.addTo(group).init();
+            c++;
+            mesh.addFaces(new MeshFace(mesh, {  uv: uvs, vertices }));
         }
+        mesh.addTo(group).init(); //The last mesh
+
+
     }
     
     function uvOnSave(...uv) { 
@@ -410,11 +405,36 @@
             normalSum[2] / normalLength
         ];
     }
-    
+
+    function normalizeNumber(n) {
+        return n / Math.pow(10, Math.ceil(Math.log10(Math.abs(n))));
+    }
+
+    function encodeString(s) {
+        let encodedString = '';
+        for (let i = 0; i < s.length; i++) {
+          const charCode = s.charCodeAt(i);
+          encodedString += charCode.toString().padStart(4, '0'); // pad with zeros to ensure 4 digits
+        }
+        return encodedString;
+      }
+      
+      function decodeString(encodedString) {
+        let decodedString = '';
+        for (let i = 0; i < encodedString.length; i += 4) {
+          const charCode = parseInt(encodedString.substring(i, i + 4));
+          decodedString += String.fromCharCode(charCode);
+        }
+        return decodedString;
+      }
+      
+      console.warn(decodeString(encodeString("Hello, world!")));
+
     function multiplyScalar(vec, scalar) {
         return vec.map((coord) => coord * scalar);
     }
     
+    //Redit or chatgpt tbh idk math to big for me 
     function rotatePoint(point, center, rotation) {
         // Convert rotation angles to radians
         const [rx, ry, rz] = rotation.map(Math.degToRad);
